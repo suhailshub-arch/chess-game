@@ -26,4 +26,15 @@ public class MatchmakingService {
         buckets.get(bucket).add(player);
         System.out.println(player + " added to bucket " + bucket);
     }
+
+    public void tryMatch(){
+        for(String bucket: buckets.keySet()){
+            Queue<Player> queue = buckets.get(bucket);
+            while(queue.size() >= 2){
+                Player player1 = queue.poll();
+                Player player2 = queue.poll();
+                System.out.println("Matched " + player1 + " vs " + player2);
+            }
+        }
+    }
 }
