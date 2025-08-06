@@ -1,7 +1,4 @@
 package com.server.model;
-
-import java.util.List;
-
 public class ChessGame {
     public enum GAME_RESULT {
         NOT_DECIDED,    
@@ -15,11 +12,11 @@ public class ChessGame {
         FINISHED
     }
     private long gameId;
-    private List<Player> players;
+    private Player[] players;
     private STATUS status;
     private GAME_RESULT gameResult;
 
-    public ChessGame(List<Player> players, long gameId){
+    public ChessGame(Player[] players, long gameId){
         this.players = players;
         this.gameId = gameId;
         this.status = STATUS.ONGOING;
@@ -30,7 +27,7 @@ public class ChessGame {
         return gameId;
     }
 
-    public List<Player> getPlayers(){
+    public Player[] getPlayers(){
         return players;
     }
 
@@ -44,7 +41,7 @@ public class ChessGame {
 
     @Override
     public String toString(){
-        return "Game ID: " + gameId + " " + players.get(0) + " vs " + players.get(1);
+        return "Game ID: " + gameId + " " + players[0].toString() + " vs " + players[1].toString();
     }
 
 }

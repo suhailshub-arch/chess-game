@@ -2,12 +2,15 @@ package com.server.service;
 
 import java.util.*;
 
+import com.server.model.ChessGame;
 import com.server.model.Player;
 
 public class MatchmakingService {
     private final Map<String, Queue<Player>> buckets = new HashMap<>();
     private final List<String> bucketOrder = Arrays.asList("low", "medium", "high");
+    private final Map<Long, ChessGame> activeGames = new HashMap<>();
     private final static long WAIT_THRESHOLD_MS = 5_000;
+    private long gameIdCounter = 1;
 
     public MatchmakingService() {
         buckets.put("low", new LinkedList<>()); // 0-999
@@ -31,7 +34,7 @@ public class MatchmakingService {
 
     public void tryMatchWithWaiting(){
         long currentTime = System.currentTimeMillis();
-        Set<Player> matchedPlayers = new HashSet<>();
+        Set<String> matchedPlayers = new HashSet<>();
 
         for(int i = 0; i < bucketOrder.size(); i++){
             String bucketKey = bucketOrder.get(i);
@@ -40,7 +43,7 @@ public class MatchmakingService {
             Iterator<Player> playerIterator = queue.iterator();
             while (playerIterator.hasNext()) {
                 Player player = playerIterator.next();
-                if(matchedPlayers.contains(player)){
+                if(matchedPlayers.contains(player.getId())){
                     continue;
                 }
 
@@ -48,9 +51,10 @@ public class MatchmakingService {
                 if (queue.size() >= 2) {
                     Player player1 = queue.poll();
                     Player player2 = queue.poll();
-                    matchedPlayers.add(player1);
-                    matchedPlayers.add(player2);
+                    matchedPlayers.add(player1.getId());
+                    matchedPlayers.add(player2.getId());
                     System.out.println("Matched " + player1 + " vs " + player2);
+                    createChessGame(player1, player2);
                     continue;
                 }
 
@@ -62,9 +66,10 @@ public class MatchmakingService {
 
                         if(match != null){
                             playerIterator.remove();
-                            matchedPlayers.add(match);
-                            matchedPlayers.add(player);
+                            matchedPlayers.add(match.getId());
+                            matchedPlayers.add(player.getId());
                             System.out.println("[Extended] Matched " + match + " vs " + player);
+                            createChessGame(player, match);
                             continue;
                         }
 
@@ -77,9 +82,10 @@ public class MatchmakingService {
 
                         if(match != null){
                             playerIterator.remove();
-                            matchedPlayers.add(match);
-                            matchedPlayers.add(player);
+                            matchedPlayers.add(match.getId());
+                            matchedPlayers.add(player.getId());
                             System.out.println("[Extended] Matched " + match + " vs " + player);
+                            createChessGame(player, match);
                             continue;
                         }
                     }
@@ -99,9 +105,24 @@ public class MatchmakingService {
         }
     }
 
+    public ChessGame createChessGame(Player player1, Player player2){
+        Player[] players = {player1, player2};
+        ChessGame game = new ChessGame(players, gameIdCounter);
+        activeGames.put(gameIdCounter, game);
+        gameIdCounter++;
+        System.out.println("Game Created " + game.toString());
+        return game;
+    }
+
     public void printQueues() {
         for (String bucket : bucketOrder) {
             System.out.println(bucket + ": " + buckets.get(bucket));
+        }
+    }
+
+    public void printActiveGames() {
+        for(ChessGame game : activeGames.values()){
+            System.out.println(game.toString());
         }
     }
 }

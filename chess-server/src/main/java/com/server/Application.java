@@ -14,17 +14,15 @@ public class Application {
         matchmakingService.addPlayer(player2);
         matchmakingService.addPlayer(player3);
 
-        matchmakingService.printQueues();
 
         matchmakingService.tryMatchWithWaiting();
-        matchmakingService.printQueues();
 
         Thread.sleep(6_000);
 
         Player player4 = new Player("bob", 21);
         matchmakingService.addPlayer(player4);
-        matchmakingService.printQueues();
 
         matchmakingService.tryMatchWithWaiting();
+        matchmakingService.printActiveGames();
     }
 }
