@@ -4,6 +4,8 @@ import java.util.*;
 
 import com.server.model.ChessGame;
 import com.server.model.Player;
+import com.server.model.ChessGame.GAME_RESULT;
+import com.server.model.ChessGame.STATUS;
 
 public class MatchmakingService {
     private final Map<String, Queue<Player>> buckets = new HashMap<>();
@@ -94,17 +96,6 @@ public class MatchmakingService {
         }
     }
 
-    public void tryMatch(){
-        for(String bucket: buckets.keySet()){
-            Queue<Player> queue = buckets.get(bucket);
-            while(queue.size() >= 2){
-                Player player1 = queue.poll();
-                Player player2 = queue.poll();
-                System.out.println("Matched " + player1 + " vs " + player2);
-            }
-        }
-    }
-
     public ChessGame createChessGame(Player player1, Player player2){
         Player[] players = {player1, player2};
         ChessGame game = new ChessGame(players, gameIdCounter);
@@ -112,6 +103,17 @@ public class MatchmakingService {
         gameIdCounter++;
         System.out.println("Game Created " + game.toString());
         return game;
+    }
+
+    public void endGame(long gameId, GAME_RESULT gameResult) {
+        ChessGame game = activeGames.get(gameId);
+        if (game != null) {
+            game.setStatus(STATUS.FINISHED);
+            game.setGameResult(gameResult);
+            activeGames.remove(gameId);
+            System.out.println("Game " + game.toString() + " finished.");
+        }
+        
     }
 
     public void printQueues() {

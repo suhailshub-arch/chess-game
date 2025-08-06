@@ -39,6 +39,14 @@ public class ChessGame {
         return gameResult;
     }
 
+    public void setStatus(STATUS status){
+        this.status = status;
+    }
+
+    public void setGameResult(GAME_RESULT gameResult) {
+        this.gameResult = gameResult;
+    }
+
     @Override
     public String toString(){
         return "Game ID: " + gameId + " " + players[0].toString() + " vs " + players[1].toString();
