@@ -6,6 +6,7 @@ import com.server.model.ChessGame;
 import com.server.model.Player;
 import com.server.model.ChessGame.GAME_RESULT;
 import com.server.model.ChessGame.STATUS;
+import com.server.util.Match;
 
 public class MatchmakingService {
     private final Map<String, Queue<Player>> buckets = new HashMap<>();
@@ -34,9 +35,10 @@ public class MatchmakingService {
         System.out.println(player + " added to bucket " + bucket);
     }
 
-    public void tryMatchWithWaiting(){
+    public List<Match> tryMatchWithWaiting(){
         long currentTime = System.currentTimeMillis();
         Set<String> matchedPlayers = new HashSet<>();
+        List<Match> matches = new ArrayList<Match>();
 
         for(int i = 0; i < bucketOrder.size(); i++){
             String bucketKey = bucketOrder.get(i);
@@ -56,7 +58,8 @@ public class MatchmakingService {
                     matchedPlayers.add(player1.getId());
                     matchedPlayers.add(player2.getId());
                     System.out.println("Matched " + player1 + " vs " + player2);
-                    createChessGame(player1, player2);
+                    ChessGame game = createChessGame(player1, player2);
+                    matches.add(new Match(player1, player2, game));
                     continue;
                 }
 
@@ -71,7 +74,8 @@ public class MatchmakingService {
                             matchedPlayers.add(match.getId());
                             matchedPlayers.add(player.getId());
                             System.out.println("[Extended] Matched " + match + " vs " + player);
-                            createChessGame(player, match);
+                            ChessGame game = createChessGame(player, match);
+                            matches.add(new Match(player, match, game));
                             continue;
                         }
 
@@ -87,13 +91,15 @@ public class MatchmakingService {
                             matchedPlayers.add(match.getId());
                             matchedPlayers.add(player.getId());
                             System.out.println("[Extended] Matched " + match + " vs " + player);
-                            createChessGame(player, match);
+                            ChessGame game = createChessGame(player, match);
+                            matches.add(new Match(player, match, game));
                             continue;
                         }
                     }
                 }
             }
         }
+        return matches;
     }
 
     public ChessGame createChessGame(Player player1, Player player2){

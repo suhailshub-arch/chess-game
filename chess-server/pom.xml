@@ -11,6 +11,16 @@
             <artifactId>chesspresso</artifactId>
             <version>0.9.2</version>
         </dependency>
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.6.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.20.0-rc1</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -19,7 +29,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.8.1</version>
                 <configuration>
-                    <source>21</source>  <!-- or 8, 17, 21, etc -->
+                    <source>21</source> 
                     <target>21</target>
                 </configuration>
             </plugin>
@@ -27,11 +37,27 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
-                <configuration>
-                    <mainClass>com.server.Application</mainClass>
-                </configuration>
+                <executions>
+                    <execution>
+                        <id>main-app</id>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.server.Application</mainClass>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>chess-cli</id>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.server.ChessCLI</mainClass>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
-
 </project>

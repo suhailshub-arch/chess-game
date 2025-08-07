@@ -22,6 +22,7 @@ public class ChessGame {
     private STATUS status;
     private GAME_RESULT gameResult;
     private Position position;
+    private Player currentPlayer;
 
     public ChessGame(Player[] players, long gameId){
         this.players = players;
@@ -29,6 +30,7 @@ public class ChessGame {
         this.status = STATUS.ONGOING;
         this.gameResult = GAME_RESULT.NOT_DECIDED;
         this.position = Position.createInitialPosition();
+        this.currentPlayer = players[0];
     }
 
     public long getGameId(){
@@ -51,6 +53,10 @@ public class ChessGame {
         return position;
     }
 
+    public Player getCurrentPlayer(){
+        return currentPlayer;
+    }
+
     public void setStatus(STATUS status){
         this.status = status;
     }
@@ -65,6 +71,7 @@ public class ChessGame {
     }
 
     public short parseMove(String moveStr) {
+        
         int fromSqi = Chess.strToSqi(moveStr.substring(0, 2));
         int toSqi = Chess.strToSqi(moveStr.substring(2, 4));
         int startSquareStone = this.position.getStone(fromSqi);
@@ -96,6 +103,7 @@ public class ChessGame {
             try {
                 this.position.doMove(move);
                 System.out.println("Made move successfuly");
+                currentPlayer = players[position.getToPlay()];
             } catch (IllegalMoveException e) {
                 System.out.println("Position invalid!");
             }
@@ -103,5 +111,6 @@ public class ChessGame {
             System.out.println("Move is illegal!");
         }
     }
+    
 
 }
