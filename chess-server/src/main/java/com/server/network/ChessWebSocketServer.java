@@ -12,8 +12,7 @@ import org.java_websocket.server.WebSocketServer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.server.dto.JoinMessageDTO;
-import com.server.dto.MatchedMessageDTO;
+import com.shared.dto.*;
 import com.server.model.ChessGame;
 import com.server.model.Player;
 import com.server.service.MatchmakingService;
