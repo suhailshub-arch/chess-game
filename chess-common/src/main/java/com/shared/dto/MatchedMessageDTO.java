@@ -6,6 +6,7 @@ public record MatchedMessageDTO(
     long gameId,
     String yourId,
     Colour colour,
-    OpponentDTO opponent
+    OpponentDTO opponent,
+    String initalFen
 ) {}
 
