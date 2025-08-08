@@ -82,8 +82,8 @@ public class ChessWebSocketServer extends WebSocketServer{
 
                         MatchedMessageDTO whiteMatchedMessage = new MatchedMessageDTO(game.getGameId(), playerWhite.getId(), Colour.WHITE, new OpponentDTO(playerBlack.getId(), playerBlack.getName(), playerBlack.getRating()));
                         MatchedMessageDTO blackMatchedMessage = new MatchedMessageDTO(game.getGameId(), playerBlack.getId(), Colour.BLACK, new OpponentDTO(playerWhite.getId(), playerWhite.getName(), playerWhite.getRating()));
-                        playerWhiteConn.send(objectMapper.writeValueAsString(whiteMatchedMessage));
-                        playerBlackConn.send(objectMapper.writeValueAsString(blackMatchedMessage));
+                        playerWhiteConn.send(objectMapper.writeValueAsString(new Envelope<MatchedMessageDTO>("matchFound", whiteMatchedMessage)));
+                        playerBlackConn.send(objectMapper.writeValueAsString(new Envelope<MatchedMessageDTO>("matchFound", blackMatchedMessage)));
 
                     }
                 }
