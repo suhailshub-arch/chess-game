@@ -76,7 +76,8 @@ public class ChessWebSocketServer extends WebSocketServer{
                         Player playerBlack = match.black;
                         WebSocket playerWhiteConn = playerIdToSocket.get(playerWhite.getId());
                         WebSocket playerBlackConn = playerIdToSocket.get(playerBlack.getId());
-                        socketToGame.put(conn, game);
+                        socketToGame.put(playerWhiteConn, game);
+                        socketToGame.put(playerBlackConn, game);
                         gameIdToSockets.put(game.getGameId(), new Pair<>(playerWhiteConn, playerBlackConn));
 
                         MatchedMessageDTO matchedMessage = new MatchedMessageDTO(playerWhite.getId(), playerWhite.getName(), playerBlack.getId(), playerBlack.getName(), game.getGameId());
