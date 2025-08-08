@@ -59,11 +59,11 @@ public class ChessWebSocketServer extends WebSocketServer{
     public void onMessage(WebSocket conn, String message) {
         System.out.println("Received message from " + conn.getRemoteSocketAddress() + ": " + message);
         try {
-            JsonNode jsonMessage = objectMapper.readTree(message);
-            JsonNode messageType = jsonMessage.get("type");
+            JsonNode root = objectMapper.readTree(message);
+            String messageType = root.get("type").asText();
             
-            if (messageType.textValue().equals("join")) {
-                JoinMessageDTO joinMsg = objectMapper.readValue(message, JoinMessageDTO.class);
+            if ("join".equals(messageType)) {
+                JoinMessageDTO joinMsg = objectMapper.treeToValue(root.get("payload"), JoinMessageDTO.class);
                 Player player = new Player(joinMsg.playerId(), joinMsg.name(), joinMsg.rating());
                 socketToPlayer.put(conn, player);
                 playerIdToSocket.put(joinMsg.playerId(), conn);
