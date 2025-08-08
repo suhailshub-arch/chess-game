@@ -1,7 +1,8 @@
 package com.server.network;
 
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -9,10 +10,14 @@ import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.server.dto.JoinMessageDTO;
+import com.server.dto.MatchedMessageDTO;
 import com.server.model.ChessGame;
 import com.server.model.Player;
 import com.server.service.MatchmakingService;
+import com.server.util.Match;
 import com.server.util.Pair;
 
 public class ChessWebSocketServer extends WebSocketServer{
@@ -48,8 +53,44 @@ public class ChessWebSocketServer extends WebSocketServer{
     }
 
     @Override
-    public void onMessage(WebSocket conn, String message){
+    public void onMessage(WebSocket conn, String message) {
         System.out.println("Received message from " + conn.getRemoteSocketAddress() + ": " + message);
+        try {
+            JsonNode jsonMessage = objectMapper.readTree(message);
+            JsonNode messageType = jsonMessage.get("type");
+            
+            if (messageType.textValue().equals("join")) {
+                JoinMessageDTO joinMsg = objectMapper.readValue(message, JoinMessageDTO.class);
+                Player player = new Player(joinMsg.playerId(), joinMsg.name(), joinMsg.rating());
+                socketToPlayer.put(conn, player);
+                playerIdToSocket.put(joinMsg.playerId(), conn);
+                matchmakingService.addPlayer(player);
+
+                List<Match> matches = matchmakingService.tryMatchWithWaiting();
+                if (!matches.isEmpty()) {
+                    Iterator<Match> itMatches = matches.iterator();
+                    while(itMatches.hasNext()){
+                        Match match = itMatches.next();
+                        ChessGame game = match.game;
+                        Player playerWhite = match.white;
+                        Player playerBlack = match.black;
+                        WebSocket playerWhiteConn = playerIdToSocket.get(playerWhite.getId());
+                        WebSocket playerBlackConn = playerIdToSocket.get(playerBlack.getId());
+                        socketToGame.put(conn, game);
+                        gameIdToSockets.put(game.getGameId(), new Pair<>(playerWhiteConn, playerBlackConn));
+
+                        MatchedMessageDTO matchedMessage = new MatchedMessageDTO(playerWhite.getId(), playerWhite.getName(), playerBlack.getId(), playerBlack.getName(), game.getGameId());
+                        playerWhiteConn.send(objectMapper.writeValueAsString(matchedMessage));
+                        playerBlackConn.send(objectMapper.writeValueAsString(matchedMessage));
+
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+        }
+
+    
     }
 
     @Override
@@ -62,4 +103,6 @@ public class ChessWebSocketServer extends WebSocketServer{
         System.out.println("Server started successfully");
         setConnectionLostTimeout(CONNECTION_LOST_TIMEOUT_SECONDS);
     }
+
+    
 }
