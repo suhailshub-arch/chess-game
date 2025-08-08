@@ -61,6 +61,15 @@
                             <mainClass>com.server.ChessCLI</mainClass>
                         </configuration>
                     </execution>
+                    <execution>
+                        <id>chess-client</id>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.client.ChessWebSocketClient</mainClass>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>
