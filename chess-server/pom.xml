@@ -2,10 +2,25 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.server</groupId>
+
+    <parent>
+        <groupId>com.chess</groupId>
+        <artifactId>chess-parent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- <groupId>com.server</groupId> -->
     <artifactId>chess-server</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>Chess Server</name>
+    <!-- <version>1.0-SNAPSHOT</version> -->
     <dependencies>
+        <!-- Shared DTOs -->
+        <dependency>
+            <groupId>com.chess</groupId>
+            <artifactId>chess-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>chesspresso</groupId>
             <artifactId>chesspresso</artifactId>

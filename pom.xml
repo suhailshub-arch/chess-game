@@ -1,0 +1,47 @@
+<!-- Parent/Root POM: coordinates all modules -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!-- Group + Artifact + Version = your project's coordinates -->
+  <groupId>com.chess</groupId>
+  <artifactId>chess-parent</artifactId>
+  <version>1.0-SNAPSHOT</version>
+
+  <!-- "pom" means this is a parent/aggregator, not a jar -->
+  <packaging>pom</packaging>
+
+  <name>Chess Parent</name>
+  <description>Parent POM coordinating common, server, and client</description>
+
+  <!-- Shared props every module inherits (Java version etc.) -->
+  <properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <!-- List the subprojects (folders) Maven should build -->
+  <modules>
+    <module>chess-common</module>
+    <module>chess-server</module>
+    <module>chess-client</module>
+  </modules>
+
+  <!-- Optional: centralize plugin versions/config -->
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.11.0</version>
+          <configuration>
+            <release>${maven.compiler.source}</release>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
