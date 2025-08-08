@@ -13,6 +13,7 @@ import org.java_websocket.server.WebSocketServer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shared.dto.*;
+import com.shared.util.Colour;
 import com.server.model.ChessGame;
 import com.server.model.Player;
 import com.server.service.MatchmakingService;
@@ -79,9 +80,10 @@ public class ChessWebSocketServer extends WebSocketServer{
                         socketToGame.put(playerBlackConn, game);
                         gameIdToSockets.put(game.getGameId(), new Pair<>(playerWhiteConn, playerBlackConn));
 
-                        MatchedMessageDTO matchedMessage = new MatchedMessageDTO(playerWhite.getId(), playerWhite.getName(), playerBlack.getId(), playerBlack.getName(), game.getGameId());
-                        playerWhiteConn.send(objectMapper.writeValueAsString(matchedMessage));
-                        playerBlackConn.send(objectMapper.writeValueAsString(matchedMessage));
+                        MatchedMessageDTO whiteMatchedMessage = new MatchedMessageDTO(game.getGameId(), playerWhite.getId(), Colour.WHITE, new OpponentDTO(playerBlack.getId(), playerBlack.getName(), playerBlack.getRating()));
+                        MatchedMessageDTO blackMatchedMessage = new MatchedMessageDTO(game.getGameId(), playerBlack.getId(), Colour.BLACK, new OpponentDTO(playerWhite.getId(), playerWhite.getName(), playerWhite.getRating()));
+                        playerWhiteConn.send(objectMapper.writeValueAsString(whiteMatchedMessage));
+                        playerBlackConn.send(objectMapper.writeValueAsString(blackMatchedMessage));
 
                     }
                 }

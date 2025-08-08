@@ -1,8 +1,11 @@
 package com.shared.dto;
 
+import com.shared.util.Colour;
 
 public record MatchedMessageDTO(
-    String whiteId, String whiteName,
-    String blackId, String blackName,
-    long gameId
+    long gameId,
+    String yourId,
+    Colour colour,
+    OpponentDTO opponent
 ) {}
+
