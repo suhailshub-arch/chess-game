@@ -16,7 +16,7 @@ public class ChessCLI {
         System.out.println("Enter Black's name: ");
         String blackName = scanner.nextLine();
 
-        Player[] players = { new Player(whiteName, 1000), new Player(blackName, 1500)};
+        Player[] players = { new Player("1", whiteName, 1000), new Player("2", blackName, 1500)};
         ChessGame game = new ChessGame(players, 1);
 
         while (game.getStatus() == ChessGame.STATUS.ONGOING) {
