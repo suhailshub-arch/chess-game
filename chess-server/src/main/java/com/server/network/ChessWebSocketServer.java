@@ -15,7 +15,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shared.dto.*;
 import com.shared.util.Colour;
 
-import chesspresso.game.Game;
 import chesspresso.position.Position;
 
 import com.server.model.ChessGame;
