@@ -1,4 +1,5 @@
-package com.server.dto;
+package com.shared.dto;
+
 
 public record MatchedMessageDTO(
     String whiteId, String whiteName,
