@@ -2,14 +2,18 @@ package com.client;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shared.dto.Envelope;
 import com.shared.dto.JoinMessageDTO;
+import com.shared.dto.MoveBroadcastDTO;
 
 public class ChessWebSocketClient extends WebSocketClient{
 
@@ -50,11 +54,67 @@ public class ChessWebSocketClient extends WebSocketClient{
     @Override
     public void onMessage(String message){
         System.out.println("Received message: " + message);
+        try {
+            JsonNode root = objectMapper.readTree(message);
+            String messageType = root.get("type").asText();
+
+            if ("move".equals(messageType)) {
+                MoveBroadcastDTO moveBroadcastDTO = objectMapper.treeToValue(root.get("payload"), MoveBroadcastDTO.class);
+                List<List<String>> board = fenToBoard(moveBroadcastDTO.fen());
+                printBoard(board);
+            }
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
     }
 
     @Override
     public void onError(Exception ex){
         System.err.println("Error occured: " + ex.getMessage());
+    }
+
+    public static List<List<String>> fenToBoard(String fen) {
+        List<List<String>> board = new ArrayList<>();
+        // Only take the board part of the FEN string
+        String[] rows = fen.split(" ")[0].split("/");
+
+        for (String row : rows) {
+            List<String> brow = new ArrayList<>();
+            for (int i = 0; i < row.length(); i++) {
+                char c = row.charAt(i);
+                if (Character.isDigit(c)) {
+                    int empty = c - '0';
+                    for (int j = 0; j < empty; j++) {
+                        brow.add("--");
+                    }
+                } else if (c == 'p') {
+                    brow.add("bp");
+                } else if (c == 'P') {
+                    brow.add("wp");
+                } else if (Character.isLowerCase(c)) {
+                    // black piece
+                    brow.add("b" + Character.toUpperCase(c));
+                } else {
+                    // white piece
+                    brow.add("w" + c);
+                }
+            }
+            board.add(brow);
+        }
+        return board;
+    }
+
+    public static void printBoard(List<List<String>> board) {
+        System.out.println("   a  b  c  d  e  f  g  h");
+        int rowNum = 8;
+        for (List<String> row : board) {
+            System.out.print(rowNum + " ");
+            for (String s : row) {
+                System.out.print(s + " ");
+            }
+            System.out.println();
+            rowNum--;
+        }
     }
 
     public static void main(String[] args) throws URISyntaxException, InterruptedException{
