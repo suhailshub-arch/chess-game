@@ -52,11 +52,11 @@ public class ChessWebSocketServer extends WebSocketServer{
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote){
-        System.out.println("CLosed " + conn.getRemoteSocketAddress());
+        System.out.println("Closed " + conn.getRemoteSocketAddress());
     }
 
     @Override
-    public void onMessage(WebSocket conn, String message) {
+    public void onMessage(WebSocket conn, String message) { 
         System.out.println("Received message from " + conn.getRemoteSocketAddress() + ": " + message);
         try {
             JsonNode root = objectMapper.readTree(message);
@@ -93,11 +93,41 @@ public class ChessWebSocketServer extends WebSocketServer{
                     }
                 }
             }
+            if ("move".equals(messageType)) {
+                MoveMessageDTO moveMsg = objectMapper.treeToValue(root.get("payload"), MoveMessageDTO.class);
+                ChessGame game = socketToGame.get(conn);
+                if (game == null) {
+                    System.err.println("Game not found");
+                    return;
+                }
+
+                Player playerToMove = socketToPlayer.get(conn);
+                if (!playerToMove.getId().equals(game.getCurrentPlayer().getId())) {
+                    System.err.println("Not your turn");
+                    return;
+                } 
+
+                short move = game.parseMove(moveMsg.uci());
+                boolean makeMove = game.makeMove(move);
+
+                if(makeMove){
+                    String newFen = game.getPosition().getFEN();
+                    Player currentPlayer = game.getCurrentPlayer();
+                    // TODO: ADD COLOUR TO PLAYER MODEL!!!!!!!!!!!!!!!
+                    Colour toPlay = currentPlayer.equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK; 
+                    MoveBroadcastDTO broadcastMsg = new MoveBroadcastDTO(game.getGameId(), moveMsg.uci(), newFen, toPlay);
+                    Envelope<MoveBroadcastDTO> moveEnvelope = new Envelope<>("move", broadcastMsg);
+                    String json = objectMapper.writeValueAsString(moveEnvelope);
+
+                    Pair<WebSocket, WebSocket> sockets = gameIdToSockets.get(game.getGameId());
+                    sockets.first.send(json);
+                    sockets.second.send(json);
+                }
+            }
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
         }
 
-    
     }
 
     @Override

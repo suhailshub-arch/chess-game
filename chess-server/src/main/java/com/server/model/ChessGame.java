@@ -89,7 +89,7 @@ public class ChessGame {
         return Move.getRegularMove(fromSqi, toSqi, isCapture);
     }
 
-    public void makeMove(short move){
+    public boolean makeMove(short move){
         short[] legalMoves = this.position.getAllMoves();
         boolean legal = false;
         for (short m : legalMoves) {
@@ -104,11 +104,14 @@ public class ChessGame {
                 this.position.doMove(move);
                 System.out.println("Made move successfuly");
                 currentPlayer = players[position.getToPlay()];
+                return true;
             } catch (IllegalMoveException e) {
-                System.out.println("Position invalid!");
+                System.out.println("Illegal Move!");
+                return false;
             }
         } else {
             System.out.println("Move is illegal!");
+            return false;
         }
     }
     

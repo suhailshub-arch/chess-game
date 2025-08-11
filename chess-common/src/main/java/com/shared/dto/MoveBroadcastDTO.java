@@ -1,3 +1,5 @@
 package com.shared.dto;
 
-public record MoveBroadcastDTO(long gameId, String uci, String fen, String toPlay) {}
+import com.shared.util.Colour;
+
+public record MoveBroadcastDTO(long gameId, String uci, String fen, Colour toPlay) {}

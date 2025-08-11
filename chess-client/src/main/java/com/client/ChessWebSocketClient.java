@@ -2,6 +2,7 @@ package com.client;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Scanner;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -31,7 +32,14 @@ public class ChessWebSocketClient extends WebSocketClient{
         } catch (Exception e) {
             System.err.println(e);
         }
-        
+        new Thread(() -> {
+            Scanner scanner = new Scanner(System.in);
+            while (true) {
+                String line = scanner.nextLine();
+                send(line);
+            }
+        }).start();
+
     }
 
     @Override
