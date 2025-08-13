@@ -4,9 +4,9 @@ import java.util.*;
 
 import com.server.model.ChessGame;
 import com.server.model.Player;
-import com.server.model.ChessGame.GAME_RESULT;
 import com.server.model.ChessGame.STATUS;
 import com.server.util.Match;
+import com.shared.util.GameResult;
 
 public class MatchmakingService {
     private final Map<String, Queue<Player>> buckets = new HashMap<>();
@@ -111,7 +111,7 @@ public class MatchmakingService {
         return game;
     }
 
-    public void endGame(long gameId, GAME_RESULT gameResult) {
+    public void endGame(long gameId, GameResult gameResult) {
         ChessGame game = activeGames.get(gameId);
         if (game != null) {
             game.setStatus(STATUS.FINISHED);
@@ -132,5 +132,16 @@ public class MatchmakingService {
         for(ChessGame game : activeGames.values()){
             System.out.println(game.toString());
         }
+    }
+
+    public void removePlayerFromQueue(Player player){
+        String bucket = getBucket(player.getRating());
+
+        Queue<Player> queue = buckets.get(bucket);
+        queue.remove(player);
+    }
+
+    public ChessGame getActiveChessgame(long gameId){
+        return activeGames.get(gameId);
     }
 }

@@ -6,6 +6,7 @@ import java.util.Scanner;
 
 import com.server.model.ChessGame;
 import com.server.model.Player;
+import com.shared.util.GameResult;
 
 public class ChessCLI {
     public static void main(String[] args) {
@@ -51,7 +52,7 @@ public class ChessCLI {
                 printBoard(board);
                 System.out.println("Checkmate! " + colour + " loses.");
                 game.setStatus(ChessGame.STATUS.FINISHED);
-                game.setGameResult(toPlay == 0 ? ChessGame.GAME_RESULT.PLAYER2_WIN : ChessGame.GAME_RESULT.PLAYER1_WIN);
+                game.setGameResult(toPlay == 0 ? GameResult.BLACK_WIN : GameResult.WHITE_WIN);
                 break;
             }
             if (game.getPosition().isStaleMate()) {
@@ -60,7 +61,7 @@ public class ChessCLI {
                 printBoard(board);                
                 System.out.println("Stalemate! The game is a draw.");
                 game.setStatus(ChessGame.STATUS.FINISHED);
-                game.setGameResult(ChessGame.GAME_RESULT.DRAW);
+                game.setGameResult(GameResult.DRAW);
                 break;
             }
             // game.setStatus(ChessGame.STATUS.FINISHED);

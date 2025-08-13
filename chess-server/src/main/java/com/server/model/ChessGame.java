@@ -1,18 +1,13 @@
 package com.server.model;
 
+import com.shared.util.GameResult;
+
 import chesspresso.Chess;
 import chesspresso.move.IllegalMoveException;
 import chesspresso.move.Move;
 import chesspresso.position.Position;
 
 public class ChessGame {
-    public enum GAME_RESULT {
-        NOT_DECIDED,    
-        PLAYER1_WIN,
-        PLAYER2_WIN,
-        DRAW,
-        ABANDONED
-    }
     public enum STATUS {
         ONGOING,
         FINISHED
@@ -20,15 +15,15 @@ public class ChessGame {
     private long gameId;
     private Player[] players;
     private STATUS status;
-    private GAME_RESULT gameResult;
+    private GameResult gameResult;
     private Position position;
     private Player currentPlayer;
+    private final java.util.concurrent.atomic.AtomicBoolean ended = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public ChessGame(Player[] players, long gameId){
         this.players = players;
         this.gameId = gameId;
         this.status = STATUS.ONGOING;
-        this.gameResult = GAME_RESULT.NOT_DECIDED;
         this.position = Position.createInitialPosition();
         this.currentPlayer = players[0];
     }
@@ -45,7 +40,7 @@ public class ChessGame {
         return status;
     }
 
-    public GAME_RESULT getGameResult(){
+    public GameResult getGameResult(){
         return gameResult;
     }
 
@@ -61,7 +56,7 @@ public class ChessGame {
         this.status = status;
     }
 
-    public void setGameResult(GAME_RESULT gameResult) {
+    public void setGameResult(GameResult gameResult) {
         this.gameResult = gameResult;
     }
 
@@ -115,5 +110,8 @@ public class ChessGame {
         }
     }
     
+    public boolean markEnded() { return ended.compareAndSet(false, true); }
+
+    public boolean isEnded() { return ended.get(); }
 
 }
