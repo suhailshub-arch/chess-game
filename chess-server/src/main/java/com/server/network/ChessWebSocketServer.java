@@ -21,7 +21,6 @@ import chesspresso.position.Position;
 
 import com.server.model.ChessGame;
 import com.server.model.Player;
-import com.server.model.ChessGame.STATUS;
 import com.server.service.MatchmakingService;
 import com.server.util.Match;
 import com.server.util.Pair;
@@ -49,8 +48,8 @@ public class ChessWebSocketServer extends WebSocketServer{
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake){
         conn.send("Welcome to the server"); // Sends message to new client
-        broadcast("new connection: " + handshake.getResourceDescriptor());
         System.out.println("new connection to " + conn.getRemoteSocketAddress());
+
     }
 
     @Override
@@ -139,16 +138,32 @@ public class ChessWebSocketServer extends WebSocketServer{
             if ("move".equals(messageType)) {
                 MoveMessageDTO moveMsg = objectMapper.treeToValue(root.get("payload"), MoveMessageDTO.class);
                 ChessGame game = socketToGame.get(conn);
-                if (game == null) {
-                    System.err.println("Game not found");
+                Player mappedPlayer = socketToPlayer.get(conn);
+
+                if (game == null || mappedPlayer == null) {
+                    sendError(conn, "notInGame", "You are not currently in a game");
+                    return;
+                }
+                if (game.isEnded()) {
+                    sendError(conn, "gameAlreadyEnded", "This game has already ended");
+                    return;
+                }
+
+                if (moveMsg.gameId() != game.getGameId()) {
+                    sendError(conn, "wrongGameId", "Wrong game ID");
+                    return;
+                }
+
+                if (!mappedPlayer.getId().equals(moveMsg.playerId())) {
+                    sendError(conn, "playerIdMismatch", "Player ID does not match this connection");
                     return;
                 }
 
                 Player playerToMove = socketToPlayer.get(conn);
-                if (!playerToMove.getId().equals(game.getCurrentPlayer().getId())) {
-                    System.err.println("Not your turn");
+                if (!mappedPlayer.getId().equals(game.getCurrentPlayer().getId())) {
+                    sendError(conn, "notYourTurn", "It is not your turn");
                     return;
-                } 
+                }
 
                 short move = game.parseMove(moveMsg.uci());
                 boolean makeMove = game.makeMove(move);
@@ -285,7 +300,6 @@ public class ChessWebSocketServer extends WebSocketServer{
         );
     }
 
-    // inside ChessWebSocketServer
     private void safeSend(WebSocket s, String json, String who) {
         if (s == null) return;
         try {
@@ -299,6 +313,15 @@ public class ChessWebSocketServer extends WebSocketServer{
         }
     }
 
-    
+    private void sendError(WebSocket conn, String code, String message){
+        Envelope<ErrorDTO> errorEnvelope = new Envelope<>("error", new ErrorDTO(code, message));
+        try {
+            String json = objectMapper.writeValueAsString(errorEnvelope);
+            safeSend(conn, json, socketLabel(conn));
+        } catch (Exception e) {
+            System.err.println(e);
+        }
+        
+    }
 }
 
