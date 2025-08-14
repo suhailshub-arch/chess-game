@@ -27,13 +27,28 @@ import com.server.util.Pair;
 
 public class ChessWebSocketServer extends WebSocketServer{
 
+    private static final int CONNECTION_LOST_TIMEOUT_SECONDS = 30;
+    private static final long HEARTBEAT_INTERVAL_MS = 10_000L;
+    private static final long HEARTBEAT_INITIAL_DELAY_MS = 2_000L;
+    private static final long HEARTBEAT_TIMEOUT_MS = 5_000L;
+
     private Map<WebSocket, Player> socketToPlayer;
     private Map<String, WebSocket> playerIdToSocket;
     private Map<WebSocket, ChessGame> socketToGame;
     private Map<Long, Pair<WebSocket, WebSocket>> gameIdToSockets;
+    private Map<WebSocket, Long> lastSentTsByConn;
+    private Map<WebSocket, Long> lastAckTsByConn;
+
     private ObjectMapper objectMapper; 
     private MatchmakingService matchmakingService;
-    private static final int CONNECTION_LOST_TIMEOUT_SECONDS = 30;
+
+    private final java.util.concurrent.ScheduledExecutorService hbExec = 
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "heartbeat-scheduler");
+            t.setDaemon(true);
+            return t;
+        });
+    
     
     public ChessWebSocketServer(InetSocketAddress address){
         super(address);
@@ -43,18 +58,23 @@ public class ChessWebSocketServer extends WebSocketServer{
         this.gameIdToSockets = new ConcurrentHashMap<>();
         this.objectMapper = new ObjectMapper();
         this.matchmakingService = new MatchmakingService();
+        this.lastAckTsByConn = new ConcurrentHashMap<>();
+        this.lastSentTsByConn = new ConcurrentHashMap<>();
     }
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake){
         conn.send("Welcome to the server"); // Sends message to new client
         System.out.println("new connection to " + conn.getRemoteSocketAddress());
-
+        long now = System.currentTimeMillis();
+        lastAckTsByConn.put(conn, now);
+        System.out.printf("[HB] seed alive %s at %d%n", socketLabel(conn), now);
     }
 
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote){
         System.out.println("Closed " + conn.getRemoteSocketAddress());
+        lastAckTsByConn.remove(conn);
 
         Player player = socketToPlayer.get(conn);
         socketToPlayer.remove(conn);
@@ -192,6 +212,16 @@ public class ChessWebSocketServer extends WebSocketServer{
                     sockets.second.send(json);
                 }
             }
+            if("heartbeat_ack".equals(messageType)){
+                System.out.printf("[LOG] Heartbeat ACK from %s%n", socketLabel(conn));
+                long ts = root.get("payload").get("ts").asLong();
+                long now = System.currentTimeMillis();
+                lastAckTsByConn.put(conn, now);
+                if (lastSentTsByConn.get(conn) != null) {
+                    long rtt = now - ts;
+                    System.out.printf("[HB] ACK <- %s ts=%d rtt=%dms%n", socketLabel(conn), ts, rtt);
+                }
+            }
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
         }
@@ -207,6 +237,13 @@ public class ChessWebSocketServer extends WebSocketServer{
     public void onStart(){
         System.out.println("Server started successfully");
         setConnectionLostTimeout(CONNECTION_LOST_TIMEOUT_SECONDS);
+        System.out.println("[HB] starting scheduler");
+        hbExec.scheduleAtFixedRate(
+            this::tickHeartbeats,
+            HEARTBEAT_INITIAL_DELAY_MS,
+            HEARTBEAT_INTERVAL_MS,
+            java.util.concurrent.TimeUnit.MILLISECONDS
+        );
     }
 
     private void finishGameSafely(long gameId, GameResult result, GameOverReason reason, String winnerId) {
@@ -322,6 +359,52 @@ public class ChessWebSocketServer extends WebSocketServer{
             System.err.println(e);
         }
         
+    }
+
+    private void tickHeartbeats() {
+        try {
+            System.out.println("[HB] tick");
+            long now = System.currentTimeMillis();
+            Iterator<WebSocket> connIterator = getConnections().iterator();
+            while(connIterator.hasNext()){
+                WebSocket conn = connIterator.next();
+                if (conn != null && conn.isOpen()){
+                    long ts = now;
+
+                    Envelope<HeartbeatDTO> heartBeatEnvelope = new Envelope<>("heartbeat", new HeartbeatDTO(ts));
+                    String json = objectMapper.writeValueAsString(heartBeatEnvelope);
+                    safeSend(conn, json, socketLabel(conn));
+                    lastSentTsByConn.put(conn, ts);
+                    lastAckTsByConn.putIfAbsent(conn, now);
+                    System.out.printf("[HB] -> %s ts=%d%n", socketLabel(conn), ts);
+                }
+                
+            }
+
+            for (WebSocket conn : getConnections()) {
+                if (conn != null && conn.isOpen()) {
+                    Long last = lastAckTsByConn.get(conn);
+                    if (last != null) {
+                        long silentFor = now - last;
+                        if (silentFor > HEARTBEAT_TIMEOUT_MS) {
+                            System.out.printf("[HB] timeout -> %s silent=%dms (closing)%n",
+                                    socketLabel(conn), silentFor);
+                            try { conn.close(4000, "heartbeat timeout"); } catch (Exception ignore) {}
+                        }
+                    }
+                }
+            }
+
+            // --- hygiene: drop closed sockets from heartbeat maps ---
+            lastAckTsByConn.keySet().removeIf(s -> s == null || !s.isOpen());
+            lastSentTsByConn.keySet().removeIf(s -> s == null || !s.isOpen());
+        } catch (Exception e) {
+            System.err.println("[HB] tick error: " + e.getMessage());
+        }
+    }
+
+    public void stopHeartbeats() {
+        hbExec.shutdownNow();
     }
 }
 

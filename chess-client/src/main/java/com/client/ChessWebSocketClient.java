@@ -12,6 +12,7 @@ import org.java_websocket.handshake.ServerHandshake;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shared.dto.Envelope;
+import com.shared.dto.HeartbeatAckDTO;
 import com.shared.dto.JoinMessageDTO;
 import com.shared.dto.MoveBroadcastDTO;
 
@@ -63,6 +64,13 @@ public class ChessWebSocketClient extends WebSocketClient{
                 List<List<String>> board = fenToBoard(moveBroadcastDTO.fen());
                 printBoard(board);
             }
+            // if("heartbeat".equals(messageType)){
+            //     long ts = root.get("payload").get("ts").asLong();
+            //     Envelope<HeartbeatAckDTO> ackEnvelope = new Envelope<>("heartbeat_ack", new HeartbeatAckDTO(ts));
+            //     String json = objectMapper.writeValueAsString(ackEnvelope);
+            //     send(json);
+            //     System.out.printf("[LOG] Heartbeat from Server ts=%d%n", ts);
+            // }
         } catch (Exception e) {
             // TODO: handle exception
         }
