@@ -64,13 +64,13 @@ public class ChessWebSocketClient extends WebSocketClient{
                 List<List<String>> board = fenToBoard(moveBroadcastDTO.fen());
                 printBoard(board);
             }
-            // if("heartbeat".equals(messageType)){
-            //     long ts = root.get("payload").get("ts").asLong();
-            //     Envelope<HeartbeatAckDTO> ackEnvelope = new Envelope<>("heartbeat_ack", new HeartbeatAckDTO(ts));
-            //     String json = objectMapper.writeValueAsString(ackEnvelope);
-            //     send(json);
-            //     System.out.printf("[LOG] Heartbeat from Server ts=%d%n", ts);
-            // }
+            if("heartbeat".equals(messageType)){
+                long ts = root.get("payload").get("ts").asLong();
+                Envelope<HeartbeatAckDTO> ackEnvelope = new Envelope<>("heartbeat_ack", new HeartbeatAckDTO(ts));
+                String json = objectMapper.writeValueAsString(ackEnvelope);
+                send(json);
+                System.out.printf("[LOG] Heartbeat from Server ts=%d%n", ts);
+            }
         } catch (Exception e) {
             // TODO: handle exception
         }

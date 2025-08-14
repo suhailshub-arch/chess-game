@@ -24,6 +24,7 @@ import com.server.model.Player;
 import com.server.service.MatchmakingService;
 import com.server.util.Match;
 import com.server.util.Pair;
+import com.server.util.PauseInfo;
 
 public class ChessWebSocketServer extends WebSocketServer{
 
@@ -31,6 +32,7 @@ public class ChessWebSocketServer extends WebSocketServer{
     private static final long HEARTBEAT_INTERVAL_MS = 10_000L;
     private static final long HEARTBEAT_INITIAL_DELAY_MS = 2_000L;
     private static final long HEARTBEAT_TIMEOUT_MS = 5_000L;
+    private static final long RECONNECT_GRACE_MS = 60_000L;
 
     private Map<WebSocket, Player> socketToPlayer;
     private Map<String, WebSocket> playerIdToSocket;
@@ -38,6 +40,7 @@ public class ChessWebSocketServer extends WebSocketServer{
     private Map<Long, Pair<WebSocket, WebSocket>> gameIdToSockets;
     private Map<WebSocket, Long> lastSentTsByConn;
     private Map<WebSocket, Long> lastAckTsByConn;
+    private final java.util.Map<Long, PauseInfo> pausedGames;
 
     private ObjectMapper objectMapper; 
     private MatchmakingService matchmakingService;
@@ -60,6 +63,7 @@ public class ChessWebSocketServer extends WebSocketServer{
         this.matchmakingService = new MatchmakingService();
         this.lastAckTsByConn = new ConcurrentHashMap<>();
         this.lastSentTsByConn = new ConcurrentHashMap<>();
+        this.pausedGames = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -406,5 +410,9 @@ public class ChessWebSocketServer extends WebSocketServer{
     public void stopHeartbeats() {
         hbExec.shutdownNow();
     }
+
+    private boolean isPaused(long gameId) { return pausedGames.containsKey(gameId); }
+    
+    private PauseInfo getPause(long gameId) { return pausedGames.get(gameId); }
 }
 
