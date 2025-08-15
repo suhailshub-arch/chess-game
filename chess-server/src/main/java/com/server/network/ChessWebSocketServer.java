@@ -391,7 +391,7 @@ public class ChessWebSocketServer extends WebSocketServer{
 
     @Override
     public void onStart(){
-        System.out.println("Server started successfully");
+        System.out.println("Server started successfully on port " + this.getPort());
         setConnectionLostTimeout(CONNECTION_LOST_TIMEOUT_SECONDS);
         System.out.println("[HB] starting scheduler");
         hbExec.scheduleAtFixedRate(

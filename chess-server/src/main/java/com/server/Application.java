@@ -32,10 +32,18 @@ public class Application {
         // ChesspressoDemo demo = new ChesspressoDemo();
         // demo.play();
 
-        InetSocketAddress address = new InetSocketAddress("localhost", 8080);
+        // InetSocketAddress address = new InetSocketAddress("localhost", 8080);
+        int port = 8080;
+        if (args.length > 0) {
+            try { port = Integer.parseInt(args[0]); } catch (Exception ignore) {}
+        }
+
+        String host = "0.0.0.0";
+
+        InetSocketAddress address = new InetSocketAddress(host, port);
         ChessWebSocketServer server = new ChessWebSocketServer(address);
         server.start();
-        System.out.println("WebSocket server started on ws://localhost:8080");
+        // System.out.println("WebSocket server started on ws://localhost:8080");
 
         Thread.currentThread().join();
     }
