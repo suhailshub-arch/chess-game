@@ -83,7 +83,7 @@ public class ChessWebSocketClient extends WebSocketClient{
                 System.out.printf("[LOG] Game %d resumed%n", resumeOkDTO.gameId());
             }
             if ("opponentReconnected".equals(messageType)) {
-                OpponentReconnectedDTO opponentReconnectedDTO = objectMapper.treeToValue(root.get("paylaod"), OpponentReconnectedDTO.class);
+                OpponentReconnectedDTO opponentReconnectedDTO = objectMapper.treeToValue(root.get("payload"), OpponentReconnectedDTO.class);
                 System.out.printf("[LOG] Opponent %s reconnected to game %d%n", opponentReconnectedDTO.playerId(), opponentReconnectedDTO.gameId());
             }
         } catch (Exception e) {
