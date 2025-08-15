@@ -15,6 +15,9 @@ import com.shared.dto.Envelope;
 import com.shared.dto.HeartbeatAckDTO;
 import com.shared.dto.JoinMessageDTO;
 import com.shared.dto.MoveBroadcastDTO;
+import com.shared.dto.OpponentReconnectedDTO;
+import com.shared.dto.PauseDTO;
+import com.shared.dto.ResumeOkDTO;
 
 public class ChessWebSocketClient extends WebSocketClient{
 
@@ -54,7 +57,7 @@ public class ChessWebSocketClient extends WebSocketClient{
 
     @Override
     public void onMessage(String message){
-        System.out.println("Received message: " + message);
+        // System.out.println("Received message: " + message);
         try {
             JsonNode root = objectMapper.readTree(message);
             String messageType = root.get("type").asText();
@@ -69,7 +72,19 @@ public class ChessWebSocketClient extends WebSocketClient{
                 Envelope<HeartbeatAckDTO> ackEnvelope = new Envelope<>("heartbeat_ack", new HeartbeatAckDTO(ts));
                 String json = objectMapper.writeValueAsString(ackEnvelope);
                 send(json);
-                System.out.printf("[LOG] Heartbeat from Server ts=%d%n", ts);
+                // System.out.printf("[LOG] Heartbeat from Server ts=%d%n", ts);
+            }
+            if ("pause".equals(messageType)) {
+                PauseDTO pauseDTO = objectMapper.treeToValue(root.get("payload"), PauseDTO.class);
+                System.out.printf("[LOG] Game %d paused by %s. Must resume by %d%n", pauseDTO.gameId(), pauseDTO.disconnectedPlayerId(), pauseDTO.resumeDeadlineMillis());
+            }
+            if ("resumeOk".equals(messageType)) {
+                ResumeOkDTO resumeOkDTO = objectMapper.treeToValue(root.get("payload"), ResumeOkDTO.class);
+                System.out.printf("[LOG] Game %d resumed%n", resumeOkDTO.gameId());
+            }
+            if ("opponentReconnected".equals(messageType)) {
+                OpponentReconnectedDTO opponentReconnectedDTO = objectMapper.treeToValue(root.get("paylaod"), OpponentReconnectedDTO.class);
+                System.out.printf("[LOG] Opponent %s reconnected to game %d%n", opponentReconnectedDTO.playerId(), opponentReconnectedDTO.gameId());
             }
         } catch (Exception e) {
             // TODO: handle exception

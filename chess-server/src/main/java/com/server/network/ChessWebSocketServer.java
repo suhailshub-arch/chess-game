@@ -31,7 +31,7 @@ public class ChessWebSocketServer extends WebSocketServer{
     private static final int CONNECTION_LOST_TIMEOUT_SECONDS = 30;
     private static final long HEARTBEAT_INTERVAL_MS = 10_000L;
     private static final long HEARTBEAT_INITIAL_DELAY_MS = 2_000L;
-    private static final long HEARTBEAT_TIMEOUT_MS = 5_000L;
+    private static final long HEARTBEAT_TIMEOUT_MS = 30_000L;
     private static final long RECONNECT_GRACE_MS = 60_000L;
 
     private Map<WebSocket, Player> socketToPlayer;
@@ -89,35 +89,50 @@ public class ChessWebSocketServer extends WebSocketServer{
             if (player != null) matchmakingService.removePlayerFromQueue(player);
             return;
         } else if (game != null) {
-            // We’re here only if game != null
             // 1) Who left? Use the invariant: players[0] = WHITE, players[1] = BLACK
             final boolean leaverIsWhite = (player != null) && player.getId().equals(game.getPlayers()[0].getId());
 
             // 2) Find opponent socket + player (may be null if they also disconnected)
             Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(game.getGameId());
-            // NOTE: if your Pair uses getters, replace `.first`/`.second` with `getFirst()`/`getSecond()`
             WebSocket oppSock = (pair != null && pair.first == conn) ? pair.second : (pair != null ? pair.first : null);
 
-            Player opponent = (oppSock != null) ? socketToPlayer.get(oppSock) : null;
+            // Player opponent = (oppSock != null) ? socketToPlayer.get(oppSock) : null;
 
-            // 3) Compute winnerId + result, even if opponent is missing
-            final String winnerId;
-            final GameResult winnerResult;
+            if(game.isEnded()){
+                socketToGame.remove(conn);
+                return;
+            }
+            socketToGame.remove(conn);
 
-            if (opponent != null) {
-                // Winner is the remaining player; compute their color via players[0]/players[1]
-                boolean opponentIsWhite = opponent.getId().equals(game.getPlayers()[0].getId());
-                winnerId = opponent.getId();
-                winnerResult = opponentIsWhite ? GameResult.WHITE_WIN : GameResult.BLACK_WIN;
-            } else {
-                // Fallback: opponent unknown (e.g., maps cleaned in a race). Use leaver’s color.
-                winnerResult = leaverIsWhite ? GameResult.BLACK_WIN : GameResult.WHITE_WIN;
-                winnerId     = leaverIsWhite ? game.getPlayers()[1].getId()
-                                            : game.getPlayers()[0].getId();
+            if (pair != null) {
+                if (leaverIsWhite) {
+                    gameIdToSockets.put(game.getGameId(), new Pair<>(null, pair.second)); // white seat empty
+                } else {
+                    gameIdToSockets.put(game.getGameId(), new Pair<>(pair.first, null));  // black seat empty
+                }
             }
 
-            // 4) End the game once, notify, and clean maps (your helper handles it)
-            finishGameSafely(game.getGameId(), winnerResult, GameOverReason.ABANDON, winnerId);
+            long now = System.currentTimeMillis();
+            long deadline = now + RECONNECT_GRACE_MS;
+            pausedGames.put(
+                game.getGameId(),
+                new PauseInfo(game.getGameId(), player.getId(), now, deadline)
+            );
+            System.out.printf("[PAUSE] game=%d by=%s until=%d%n", game.getGameId(), player.getId(), deadline);
+
+            // Notify the opponent (if still connected)
+            if (oppSock != null && oppSock.isOpen()) {
+                PauseDTO pausePayload = new PauseDTO(game.getGameId(), player.getId(), deadline);
+                try {
+                    String json = objectMapper.writeValueAsString(new Envelope<>("pause", pausePayload));
+                    safeSend(oppSock, json, socketLabel(oppSock));
+                } catch (Exception e) {
+                    System.err.println(e.getMessage());
+                }
+                
+            }
+
+            return;
         }
     }
 
@@ -130,6 +145,58 @@ public class ChessWebSocketServer extends WebSocketServer{
             
             if ("join".equals(messageType)) {
                 JoinMessageDTO joinMsg = objectMapper.treeToValue(root.get("payload"), JoinMessageDTO.class);
+
+                for (var entry : new java.util.ArrayList<>(pausedGames.entrySet())) {
+                    final long gameId = entry.getKey();
+                    final PauseInfo info = entry.getValue();
+
+                    if (info.disconnectedPlayerId().equals(joinMsg.playerId())) {
+                        ChessGame game = matchmakingService.getActiveChessgame(gameId);
+                        String playerId = info.disconnectedPlayerId();
+                        boolean isWhite = playerId.equals(game.getPlayers()[0].getId());
+                        Player returningPlayer = isWhite ? game.getPlayers()[0] : game.getPlayers()[1];
+                        
+
+                        Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gameId);
+                        WebSocket oldSeat = (pair == null) ? null : (isWhite ? pair.first : pair.second);
+                        if (oldSeat != null && oldSeat != conn && oldSeat.isOpen()) {
+                            try { oldSeat.close(4001, "replaced by resume"); } catch (Exception ignore) {}
+                        }
+
+                        socketToPlayer.put(conn, returningPlayer);
+                        playerIdToSocket.put(playerId, conn);
+                        socketToGame.put(conn, game);
+
+                        if (pair == null) {
+                            gameIdToSockets.put(gameId, isWhite ? new Pair<>(conn, null) : new Pair<>(null, conn));
+                        } else {
+                            gameIdToSockets.put(gameId, isWhite ? new Pair<>(conn, pair.second) : new Pair<>(pair.first, conn));
+                        }
+
+                        Pair<WebSocket, WebSocket> after = gameIdToSockets.get(gameId);
+                        boolean bothPresent = after != null
+                                && after.first  != null && after.first.isOpen()
+                                && after.second != null && after.second.isOpen();
+
+                        if (bothPresent) {
+                            pausedGames.remove(gameId);
+                        }
+
+                        String fen = game.getPosition().getFEN();
+                        Colour toPlay = game.getCurrentPlayer().equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK;
+                        Player opponentPlayer  = isWhite ? game.getPlayers()[1] : game.getPlayers()[0];
+                        OpponentDTO opp = new OpponentDTO(opponentPlayer.getId(), opponentPlayer.getName(), opponentPlayer.getRating());
+
+                        ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, opp);
+                        String jsonOk = objectMapper.writeValueAsString(new Envelope<>("resumeOk", ok));
+                        safeSend(conn, jsonOk, socketLabel(conn));
+
+                        WebSocket oppSock = isWhite ? after.second : after.first;
+                        OpponentReconnectedDTO or = new OpponentReconnectedDTO(gameId, playerId);
+                        String jsonOr = objectMapper.writeValueAsString(new Envelope<>("opponentReconnected", or));
+                        safeSend(oppSock, jsonOr, socketLabel(oppSock));
+                    }
+                }
                 Player player = new Player(joinMsg.playerId(), joinMsg.name(), joinMsg.rating());
                 socketToPlayer.put(conn, player);
                 playerIdToSocket.put(joinMsg.playerId(), conn);
@@ -162,14 +229,22 @@ public class ChessWebSocketServer extends WebSocketServer{
             if ("move".equals(messageType)) {
                 MoveMessageDTO moveMsg = objectMapper.treeToValue(root.get("payload"), MoveMessageDTO.class);
                 ChessGame game = socketToGame.get(conn);
+
+
                 Player mappedPlayer = socketToPlayer.get(conn);
 
                 if (game == null || mappedPlayer == null) {
                     sendError(conn, "notInGame", "You are not currently in a game");
                     return;
                 }
+
                 if (game.isEnded()) {
                     sendError(conn, "gameAlreadyEnded", "This game has already ended");
+                    return;
+                }
+
+                if (isPaused(game.getGameId())) {
+                    sendError(conn, "gamePaused", "Game is paused while opponent reconnects");
                     return;
                 }
 
@@ -226,6 +301,83 @@ public class ChessWebSocketServer extends WebSocketServer{
                     System.out.printf("[HB] ACK <- %s ts=%d rtt=%dms%n", socketLabel(conn), ts, rtt);
                 }
             }
+            if ("resume".equals(messageType)) {
+                ResumeRequestDTO payload = objectMapper.treeToValue(root.get("payload"), ResumeRequestDTO.class);
+                System.out.printf("[RESUME] request from %s for game %d%n", payload.playerId(), payload.gameId());
+                long gameId = payload.gameId();
+                String playerId = payload.playerId();
+                PauseInfo info = pausedGames.get(gameId);
+                long now = System.currentTimeMillis();
+
+                if (info == null) {
+                    sendError(conn, "resumeDenied", "Game not paused");
+                    return;
+                }
+
+                if (now > info.deadlineMillis()) {
+                    sendError(conn, "resumeDenied", "Deadline expired");
+                    return;
+                }
+
+                ChessGame game = matchmakingService.getActiveChessgame(gameId);
+                if (game == null) {
+                    sendError(conn, "resumeDenied", "Game no longer active");
+                    return;
+                }
+
+                boolean isWhiteId = playerId.equals(game.getPlayers()[0].getId());
+                boolean isBlackId = playerId.equals(game.getPlayers()[1].getId());
+                if (!(isWhiteId || isBlackId)) { sendError(conn, "resumeDenied", "Player not in game"); return; }
+
+                // Only the paused/disconnected player can resume:
+                if (!playerId.equals(info.disconnectedPlayerId())) {
+                    sendError(conn, "resumeDenied", "Only the disconnected player can resume");
+                    return;
+                }
+
+                boolean isWhite = playerId.equals(game.getPlayers()[0].getId());
+                Player returningPlayer = isWhite ? game.getPlayers()[0] : game.getPlayers()[1];
+                
+
+                Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gameId);
+                WebSocket oldSeat = (pair == null) ? null : (isWhite ? pair.first : pair.second);
+                if (oldSeat != null && oldSeat != conn && oldSeat.isOpen()) {
+                    try { oldSeat.close(4001, "replaced by resume"); } catch (Exception ignore) {}
+                }
+
+                socketToPlayer.put(conn, returningPlayer);
+                playerIdToSocket.put(playerId, conn);
+                socketToGame.put(conn, game);
+
+                if (pair == null) {
+                    gameIdToSockets.put(gameId, isWhite ? new Pair<>(conn, null) : new Pair<>(null, conn));
+                } else {
+                    gameIdToSockets.put(gameId, isWhite ? new Pair<>(conn, pair.second) : new Pair<>(pair.first, conn));
+                }
+
+                Pair<WebSocket, WebSocket> after = gameIdToSockets.get(gameId);
+                boolean bothPresent = after != null
+                        && after.first  != null && after.first.isOpen()
+                        && after.second != null && after.second.isOpen();
+
+                if (bothPresent) {
+                    pausedGames.remove(gameId);
+                }
+
+                String fen = game.getPosition().getFEN();
+                Colour toPlay = game.getCurrentPlayer().equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK;
+                Player opponentPlayer  = isWhite ? game.getPlayers()[1] : game.getPlayers()[0];
+                OpponentDTO opp = new OpponentDTO(opponentPlayer.getId(), opponentPlayer.getName(), opponentPlayer.getRating());
+
+                ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, opp);
+                String jsonOk = objectMapper.writeValueAsString(new Envelope<>("resumeOk", ok));
+                safeSend(conn, jsonOk, socketLabel(conn));
+
+                WebSocket oppSock = isWhite ? after.second : after.first;
+                OpponentReconnectedDTO or = new OpponentReconnectedDTO(gameId, playerId);
+                String jsonOr = objectMapper.writeValueAsString(new Envelope<>("opponentReconnected", or));
+                safeSend(oppSock, jsonOr, socketLabel(oppSock));
+            }
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
         }
@@ -251,6 +403,7 @@ public class ChessWebSocketServer extends WebSocketServer{
     }
 
     private void finishGameSafely(long gameId, GameResult result, GameOverReason reason, String winnerId) {
+        pausedGames.remove(gameId);
     // 1) Find the game
         ChessGame game = matchmakingService.getActiveChessgame(gameId);
         if (game == null) return;
@@ -404,6 +557,62 @@ public class ChessWebSocketServer extends WebSocketServer{
             lastSentTsByConn.keySet().removeIf(s -> s == null || !s.isOpen());
         } catch (Exception e) {
             System.err.println("[HB] tick error: " + e.getMessage());
+        }
+
+        final long now2 = System.currentTimeMillis();
+
+        // Iterate over a snapshot so we can remove while iterating
+        for (var entry : new java.util.ArrayList<>(pausedGames.entrySet())) {
+            final long gameId = entry.getKey();
+            final PauseInfo info = entry.getValue();
+
+            if (now2 <= info.deadlineMillis()) continue; // still within grace
+
+            // Prevent reprocessing if anything below throws or takes time
+            pausedGames.remove(gameId);
+
+            // Get authoritative game + sockets snapshot *before* finishing
+            ChessGame game = matchmakingService.getActiveChessgame(gameId);
+            Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gameId);
+
+            // If game vanished (already cleaned elsewhere), nothing to do
+            if (game == null) {
+                System.out.printf("[PAUSE-EXPIRE] game=%d already gone%n", gameId);
+                continue;
+            }
+
+            // If pair missing, we can't tell who is present → safest is draw
+            if (pair == null) {
+                System.out.printf("[PAUSE-EXPIRE] game=%d has no sockets; declaring draw%n", gameId);
+                finishGameSafely(gameId, GameResult.DRAW, GameOverReason.ABANDON, null);
+                continue;
+            }
+
+            boolean whitePresent = (pair.first != null && pair.first.isOpen());
+            boolean blackPresent = (pair.second != null && pair.second.isOpen());
+
+            GameResult result;
+            String winnerId;
+
+            if (whitePresent && !blackPresent) {
+                result = GameResult.WHITE_WIN;
+                winnerId = game.getPlayers()[0].getId(); // players[0] = WHITE
+            } else if (blackPresent && !whitePresent) {
+                result = GameResult.BLACK_WIN;
+                winnerId = game.getPlayers()[1].getId(); // players[1] = BLACK
+            } else if (!whitePresent && !blackPresent) {
+                // nobody is here anymore
+                result = GameResult.DRAW;
+                winnerId = null;
+            } else {
+                // Both seats present yet game is still 'paused' → clean up the pause and continue
+                System.out.printf("[PAUSE-EXPIRE] game=%d both seats present; clearing paused state%n", gameId);
+                continue;
+            }
+
+            System.out.printf("[PAUSE-EXPIRE] game=%d deadline passed; result=%s winner=%s%n",
+                    gameId, result, winnerId);
+            finishGameSafely(gameId, result, GameOverReason.ABANDON, winnerId);
         }
     }
 
