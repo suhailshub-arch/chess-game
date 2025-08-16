@@ -69,7 +69,7 @@ public class ChessWebSocketServer extends WebSocketServer{
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake){
         conn.send("Welcome to the server"); // Sends message to new client
-        System.out.println("new connection to " + conn.getRemoteSocketAddress());
+        System.out.println("[SERVER " + getPort() + "] Connection opened from " + conn.getRemoteSocketAddress());
         long now = System.currentTimeMillis();
         lastAckTsByConn.put(conn, now);
         System.out.printf("[HB] seed alive %s at %d%n", socketLabel(conn), now);
