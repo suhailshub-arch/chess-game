@@ -21,6 +21,7 @@ import chesspresso.position.Position;
 
 import com.server.model.ChessGame;
 import com.server.model.Player;
+import com.server.redis.RedisManager;
 import com.server.service.MatchmakingService;
 import com.server.util.Match;
 import com.server.util.Pair;
@@ -60,7 +61,7 @@ public class ChessWebSocketServer extends WebSocketServer{
         this.socketToGame = new ConcurrentHashMap<>();
         this.gameIdToSockets = new ConcurrentHashMap<>();
         this.objectMapper = new ObjectMapper();
-        this.matchmakingService = new MatchmakingService();
+        this.matchmakingService = new MatchmakingService(Integer.toString(getPort()));
         this.lastAckTsByConn = new ConcurrentHashMap<>();
         this.lastSentTsByConn = new ConcurrentHashMap<>();
         this.pausedGames = new ConcurrentHashMap<>();
@@ -68,7 +69,7 @@ public class ChessWebSocketServer extends WebSocketServer{
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake){
-        conn.send("Welcome to the server"); // Sends message to new client
+        // conn.send("Welcome to the server"); // Sends message to new client
         System.out.println("[SERVER " + getPort() + "] Connection opened from " + conn.getRemoteSocketAddress());
         long now = System.currentTimeMillis();
         lastAckTsByConn.put(conn, now);
@@ -400,6 +401,7 @@ public class ChessWebSocketServer extends WebSocketServer{
             HEARTBEAT_INTERVAL_MS,
             java.util.concurrent.TimeUnit.MILLISECONDS
         );
+
     }
 
     private void finishGameSafely(long gameId, GameResult result, GameOverReason reason, String winnerId) {
