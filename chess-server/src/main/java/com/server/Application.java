@@ -2,6 +2,7 @@ package com.server;
 
 // import com.server.model.Player;
 import com.server.network.ChessWebSocketServer;
+import com.server.redis.RedisManager;
 import com.sun.net.httpserver.HttpExchange;
 // import com.server.service.MatchmakingService;
 import com.sun.net.httpserver.HttpHandler;
@@ -55,6 +56,10 @@ public class Application {
         ChessWebSocketServer chessServer = new ChessWebSocketServer(address);
         chessServer.start();
         // System.out.println("WebSocket server started on ws://localhost:8080");
+        // RedisManager redis = RedisManager.getInstance();
+        // redis.setGameNode("1", "8081");
+        // System.out.println("From Redis: " + redis.getGameNode("1"));
+
 
         Thread.currentThread().join();
     }

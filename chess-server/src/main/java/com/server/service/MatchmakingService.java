@@ -5,6 +5,7 @@ import java.util.*;
 import com.server.model.ChessGame;
 import com.server.model.Player;
 import com.server.model.ChessGame.STATUS;
+import com.server.redis.RedisManager;
 import com.server.util.Match;
 import com.shared.util.GameResult;
 
@@ -14,11 +15,13 @@ public class MatchmakingService {
     private final Map<Long, ChessGame> activeGames = new HashMap<>();
     private final static long WAIT_THRESHOLD_MS = 5_000;
     private long gameIdCounter = 1;
+    private final String nodeId;
 
-    public MatchmakingService() {
+    public MatchmakingService(String nodeId) {
         buckets.put("low", new LinkedList<>()); // 0-999
         buckets.put("medium", new LinkedList<>()); //1000-1999
         buckets.put("high", new LinkedList<>()); // > 2000
+        this.nodeId = nodeId;
     }
 
     // Determine which bucket a player belongs in
@@ -106,6 +109,12 @@ public class MatchmakingService {
         Player[] players = {player1, player2};
         ChessGame game = new ChessGame(players, gameIdCounter);
         activeGames.put(gameIdCounter, game);
+
+        RedisManager rm = RedisManager.getInstance();
+        rm.setGameNode(game.getGameId(), nodeId);
+        boolean ok1 = rm.bindPlayerToGame(player1.getId(), game.getGameId());
+        boolean ok2 = rm.bindPlayerToGame(player2.getId(), game.getGameId());
+        System.out.println("[Redis] Writing game " + game.getGameId() + " -> " + nodeId);
         gameIdCounter++;
         System.out.println("Game Created " + game.toString());
         return game;
