@@ -1,154 +1,3 @@
-// package com.client;
-
-// import java.net.URI;
-// import java.net.URISyntaxException;
-// import java.util.ArrayList;
-// import java.util.List;
-// import java.util.Scanner;
-
-// import org.java_websocket.client.WebSocketClient;
-// import org.java_websocket.handshake.ServerHandshake;
-
-// import com.fasterxml.jackson.databind.JsonNode;
-// import com.fasterxml.jackson.databind.ObjectMapper;
-// import com.shared.dto.Envelope;
-// import com.shared.dto.HeartbeatAckDTO;
-// import com.shared.dto.JoinMessageDTO;
-// import com.shared.dto.MoveBroadcastDTO;
-// import com.shared.dto.OpponentReconnectedDTO;
-// import com.shared.dto.PauseDTO;
-// import com.shared.dto.ResumeOkDTO;
-
-// public class ChessWebSocketClient extends WebSocketClient{
-
-//     private String PLAYERID_TEST;
-//     private ObjectMapper objectMapper;
-    
-//     public ChessWebSocketClient(URI serverURI, String playerId){
-//         super(serverURI);
-//         this.PLAYERID_TEST = playerId;
-//         this.objectMapper = new ObjectMapper();
-//     }
-
-//     @Override
-//     public void onOpen(ServerHandshake handshakeData){
-//         JoinMessageDTO joinMsg = new JoinMessageDTO(PLAYERID_TEST, "Alice", 1500);
-//         Envelope<JoinMessageDTO> joinEnvelope = new Envelope<>("join", joinMsg);
-//         try {
-//             String messageJson = objectMapper.writeValueAsString(joinEnvelope);
-//             send(messageJson);
-//         } catch (Exception e) {
-//             System.err.println(e);
-//         }
-//         new Thread(() -> {
-//             Scanner scanner = new Scanner(System.in);
-//             while (true) {
-//                 String line = scanner.nextLine();
-//                 send(line);
-//             }
-//         }).start();
-
-//     }
-
-//     @Override
-//     public void onClose(int code, String reason, boolean remote){
-//         System.out.println("closed with exit code " + code + " additional info: " + reason);
-//     }
-
-//     @Override
-//     public void onMessage(String message){
-//         // System.out.println("Received message: " + message);
-//         try {
-//             JsonNode root = objectMapper.readTree(message);
-//             String messageType = root.get("type").asText();
-
-//             if ("move".equals(messageType)) {
-//                 MoveBroadcastDTO moveBroadcastDTO = objectMapper.treeToValue(root.get("payload"), MoveBroadcastDTO.class);
-//                 List<List<String>> board = fenToBoard(moveBroadcastDTO.fen());
-//                 printBoard(board);
-//             }
-//             if("heartbeat".equals(messageType)){
-//                 long ts = root.get("payload").get("ts").asLong();
-//                 Envelope<HeartbeatAckDTO> ackEnvelope = new Envelope<>("heartbeat_ack", new HeartbeatAckDTO(ts));
-//                 String json = objectMapper.writeValueAsString(ackEnvelope);
-//                 send(json);
-//                 // System.out.printf("[LOG] Heartbeat from Server ts=%d%n", ts);
-//             }
-//             if ("pause".equals(messageType)) {
-//                 PauseDTO pauseDTO = objectMapper.treeToValue(root.get("payload"), PauseDTO.class);
-//                 System.out.printf("[LOG] Game %d paused by %s. Must resume by %d%n", pauseDTO.gameId(), pauseDTO.disconnectedPlayerId(), pauseDTO.resumeDeadlineMillis());
-//             }
-//             if ("resumeOk".equals(messageType)) {
-//                 ResumeOkDTO resumeOkDTO = objectMapper.treeToValue(root.get("payload"), ResumeOkDTO.class);
-//                 System.out.printf("[LOG] Game %d resumed%n", resumeOkDTO.gameId());
-//             }
-//             if ("opponentReconnected".equals(messageType)) {
-//                 OpponentReconnectedDTO opponentReconnectedDTO = objectMapper.treeToValue(root.get("payload"), OpponentReconnectedDTO.class);
-//                 System.out.printf("[LOG] Opponent %s reconnected to game %d%n", opponentReconnectedDTO.playerId(), opponentReconnectedDTO.gameId());
-//             }
-//         } catch (Exception e) {
-//             // TODO: handle exception
-//         }
-//     }
-
-//     @Override
-//     public void onError(Exception ex){
-//         System.err.println("Error occured: " + ex.getMessage());
-//     }
-
-//     public static List<List<String>> fenToBoard(String fen) {
-//         List<List<String>> board = new ArrayList<>();
-//         // Only take the board part of the FEN string
-//         String[] rows = fen.split(" ")[0].split("/");
-
-//         for (String row : rows) {
-//             List<String> brow = new ArrayList<>();
-//             for (int i = 0; i < row.length(); i++) {
-//                 char c = row.charAt(i);
-//                 if (Character.isDigit(c)) {
-//                     int empty = c - '0';
-//                     for (int j = 0; j < empty; j++) {
-//                         brow.add("--");
-//                     }
-//                 } else if (c == 'p') {
-//                     brow.add("bp");
-//                 } else if (c == 'P') {
-//                     brow.add("wp");
-//                 } else if (Character.isLowerCase(c)) {
-//                     // black piece
-//                     brow.add("b" + Character.toUpperCase(c));
-//                 } else {
-//                     // white piece
-//                     brow.add("w" + c);
-//                 }
-//             }
-//             board.add(brow);
-//         }
-//         return board;
-//     }
-
-//     public static void printBoard(List<List<String>> board) {
-//         System.out.println("   a  b  c  d  e  f  g  h");
-//         int rowNum = 8;
-//         for (List<String> row : board) {
-//             System.out.print(rowNum + " ");
-//             for (String s : row) {
-//                 System.out.print(s + " ");
-//             }
-//             System.out.println();
-//             rowNum--;
-//         }
-//     }
-
-//     public static void main(String[] args) throws URISyntaxException, InterruptedException{
-//         String playerId = args[0];
-//         WebSocketClient client = new ChessWebSocketClient(new URI("ws://localhost:8080"), playerId);
-//         client.connect();
-       
-//         Thread.currentThread().join();
-//     }
-// }
-
 package com.client;
 
 import java.net.URI;
@@ -202,6 +51,8 @@ public class ChessWebSocketClient extends WebSocketClient {
     private volatile Colour toPlay = Colour.WHITE;
     private volatile boolean paused = false;
     private final Deque<String> lastMoves = new ArrayDeque<>(8);
+    private volatile boolean gameIsOver = false;
+    private volatile String gameOverSummary = null;
 
     // ---------- ansi helpers ----------
     private static final String CSI = "\u001b[";
@@ -297,10 +148,12 @@ public class ChessWebSocketClient extends WebSocketClient {
                 }
                 case "resumeOk" -> {
                     ResumeOkDTO ok = objectMapper.treeToValue(payload, ResumeOkDTO.class);
-                    if (this.gameId <= 0L) this.gameId = ok.gameId();
-                    this.fen = ok.fen();
-                    this.toPlay = ok.toPlay();
-                    this.paused = false;
+                    this.gameId     = ok.gameId();
+                    this.yourColour = ok.yourColour();   // ← set me
+                    this.opponent   = ok.opponent();     // ← and me
+                    this.fen        = ok.fen();
+                    this.toPlay     = ok.toPlay();
+                    this.paused     = false;
                     render();
                 }
                 case "opponentReconnected" -> {
@@ -323,12 +176,14 @@ public class ChessWebSocketClient extends WebSocketClient {
                 }
                 case "gameOver" -> {
                     GameOverDTO over = objectMapper.treeToValue(payload, GameOverDTO.class);
-                    System.out.printf(
-                        "%n[GAME OVER] game=%d result=%s reason=%s winner=%s%n",
-                        over.gameId(), over.result(), over.reason(),
+                    this.gameIsOver = true;
+                    this.paused = false; // ensure we don't say "paused"
+                    this.gameOverSummary = String.format(
+                        "result=%s reason=%s winner=%s",
+                        over.result(), over.reason(),
                         over.winnerId() == null ? "-" : over.winnerId()
                     );
-                    render();
+                    render(); // single-frame UI handles how to show it
                 }
                 default -> {
                     // ignore unknown
@@ -348,6 +203,11 @@ public class ChessWebSocketClient extends WebSocketClient {
                 String line = sc.nextLine();
                 if (line == null) continue;
                 line = line.trim();
+                if (gameIsOver && !"exit".equalsIgnoreCase(line)) {
+                    System.out.println("Game is over. Type 'exit' to quit.");
+                    continue;
+                }
+
                 if (line.isEmpty()) continue;
 
                 if ("exit".equalsIgnoreCase(line)) { close(); break; }
@@ -375,6 +235,11 @@ public class ChessWebSocketClient extends WebSocketClient {
             System.out.println("Game is paused; cannot move.");
             return;
         }
+        if (gameIsOver) {
+            System.out.println("Game is over; cannot move.");
+            return;
+        }
+
         try {
             send(objectMapper.writeValueAsString(
                 new Envelope<>("move", new MoveMessageDTO(gameId, playerId, uci))));
@@ -399,17 +264,26 @@ public class ChessWebSocketClient extends WebSocketClient {
         clearScreen();
         hideCursor();
 
-        String status = paused ? "⏸ paused — waiting for opponent"
-                : (toPlay == yourColour ? "Your move" : "Their move");
+        String status;
+        if (gameIsOver) status = "GAME OVER";
+        else if (paused) status = "⏸ paused — waiting for opponent";
+        else if (toPlay == yourColour) status = "Your move";
+        else status = "Their move";
 
         String opp = (opponent == null) ? "-" : (opponent.name() + "(" + opponent.rating() + ")");
         String you = (yourColour == null) ? "-" : yourColour.name();
         String sep = USE_UNICODE_PIECES ? " • " : " - ";
 
+
         String header = String.format("Game #%s  You: %s  vs %s%s%s%n",
                 (gameId <= 0 ? "-" : String.valueOf(gameId)), you, opp, sep, status);
 
         StringBuilder sb = new StringBuilder(1024);
+
+        if (gameOverSummary != null) {
+            sb.append("[GAME OVER] ").append(gameOverSummary).append('\n');
+        }
+
         sb.append(header).append("   a  b  c  d  e  f  g  h\n");
 
         // board from FEN
@@ -438,6 +312,12 @@ public class ChessWebSocketClient extends WebSocketClient {
 
         System.out.print(sb.toString());
         showCursor();
+        if (gameIsOver) {
+            System.out.print("[game over] type 'exit' to quit\n");
+        } else {
+            System.out.print("uci> ");
+        }
+    System.out.flush();
     }
 
     private void pushMove(String uci) {

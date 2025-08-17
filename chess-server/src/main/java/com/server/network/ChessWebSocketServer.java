@@ -187,8 +187,9 @@ public class ChessWebSocketServer extends WebSocketServer{
                         Colour toPlay = game.getCurrentPlayer().equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK;
                         Player opponentPlayer  = isWhite ? game.getPlayers()[1] : game.getPlayers()[0];
                         OpponentDTO opp = new OpponentDTO(opponentPlayer.getId(), opponentPlayer.getName(), opponentPlayer.getRating());
+                        Colour myColour = isWhite ? Colour.WHITE : Colour.BLACK;
 
-                        ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, opp);
+                        ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, myColour, opp);
                         String jsonOk = objectMapper.writeValueAsString(new Envelope<>("resumeOk", ok));
                         safeSend(conn, jsonOk, socketLabel(conn));
 
@@ -266,30 +267,40 @@ public class ChessWebSocketServer extends WebSocketServer{
                 }
 
                 short move = game.parseMove(moveMsg.uci());
+                if (move == 0) {
+                    sendError(conn, "illegalMove", "Unrecognized or illegal move: " + moveMsg.uci());
+                    return;
+                }
+
                 boolean makeMove = game.makeMove(move);
 
-                if(makeMove){
-                    if (game.getPosition().isMate()) {
-                        String winnerId = playerToMove.getId();
-                        GameResult result = playerToMove.equals(game.getPlayers()[0]) ? GameResult.WHITE_WIN : GameResult.BLACK_WIN;
-                        
-                        finishGameSafely(game.getGameId(), result, GameOverReason.CHECKMATE, winnerId);
-                        return;
-                    } else if (game.getPosition().isStaleMate()) {
-                        finishGameSafely(game.getGameId(), GameResult.DRAW, GameOverReason.STALEMATE, null);
-                        return;
-                    }
-                    String newFen = game.getPosition().getFEN();
-                    Player currentPlayer = game.getCurrentPlayer();
-                    // TODO: ADD COLOUR TO PLAYER MODEL!!!!!!!!!!!!!!!
-                    Colour toPlay = currentPlayer.equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK; 
-                    MoveBroadcastDTO broadcastMsg = new MoveBroadcastDTO(game.getGameId(), moveMsg.uci(), newFen, toPlay);
-                    Envelope<MoveBroadcastDTO> moveEnvelope = new Envelope<>("move", broadcastMsg);
-                    String json = objectMapper.writeValueAsString(moveEnvelope);
+                if (!makeMove) {
+                    sendError(conn, "illegalMove", "Move not legal in the current position: " + moveMsg.uci());
+                    return;
+                }
+                
+                String newFen = game.getPosition().getFEN();
+                Player currentPlayer = game.getCurrentPlayer();
+                // TODO: ADD COLOUR TO PLAYER MODEL!!!!!!!!!!!!!!!
+                Colour toPlay = currentPlayer.equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK; 
+                MoveBroadcastDTO broadcastMsg = new MoveBroadcastDTO(game.getGameId(), moveMsg.uci(), newFen, toPlay);
+                Envelope<MoveBroadcastDTO> moveEnvelope = new Envelope<>("move", broadcastMsg);
+                String json = objectMapper.writeValueAsString(moveEnvelope);
 
-                    Pair<WebSocket, WebSocket> sockets = gameIdToSockets.get(game.getGameId());
-                    sockets.first.send(json);
-                    sockets.second.send(json);
+                Pair<WebSocket, WebSocket> sockets = gameIdToSockets.get(game.getGameId());
+                sockets.first.send(json);
+                sockets.second.send(json);
+
+                if (game.getPosition().isMate()) {
+                    String winnerId = playerToMove.getId();
+                    GameResult result = playerToMove.equals(game.getPlayers()[0]) ? GameResult.WHITE_WIN : GameResult.BLACK_WIN;
+                    System.out.printf("[END] CHECKMATE game=%d by=%s lastUci=%s%n",
+                        game.getGameId(), socketLabel(conn), moveMsg.uci());
+                    finishGameSafely(game.getGameId(), result, GameOverReason.CHECKMATE, winnerId);
+                    return;
+                } else if (game.getPosition().isStaleMate()) {
+                    finishGameSafely(game.getGameId(), GameResult.DRAW, GameOverReason.STALEMATE, null);
+                    return;
                 }
             }
             if("heartbeat_ack".equals(messageType)){
@@ -369,8 +380,9 @@ public class ChessWebSocketServer extends WebSocketServer{
                 Colour toPlay = game.getCurrentPlayer().equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK;
                 Player opponentPlayer  = isWhite ? game.getPlayers()[1] : game.getPlayers()[0];
                 OpponentDTO opp = new OpponentDTO(opponentPlayer.getId(), opponentPlayer.getName(), opponentPlayer.getRating());
+                Colour myColour = isWhite ? Colour.WHITE : Colour.BLACK;
 
-                ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, opp);
+                ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, myColour, opp);
                 String jsonOk = objectMapper.writeValueAsString(new Envelope<>("resumeOk", ok));
                 safeSend(conn, jsonOk, socketLabel(conn));
 
@@ -406,10 +418,9 @@ public class ChessWebSocketServer extends WebSocketServer{
 
     private void finishGameSafely(long gameId, GameResult result, GameOverReason reason, String winnerId) {
         pausedGames.remove(gameId);
-    // 1) Find the game
         ChessGame game = matchmakingService.getActiveChessgame(gameId);
         if (game == null) return;
-
+        System.out.println("IM HEREEEEEE");
         // We’ll snapshot everything we need while holding the lock,
         // then send over the network after releasing the lock.
         WebSocket whiteSock = null;
