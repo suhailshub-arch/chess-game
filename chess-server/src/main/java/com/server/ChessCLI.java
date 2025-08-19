@@ -20,6 +20,7 @@ public class ChessCLI {
         Player[] players = { new Player("1", whiteName, 1000), new Player("2", blackName, 1500)};
         ChessGame game = new ChessGame(players, 1);
 
+
         while (game.getStatus() == ChessGame.STATUS.ONGOING) {
             String fenBoard = game.getPosition().toString();
             List<List<String>> board = fenToBoard(fenBoard);

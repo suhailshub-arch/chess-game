@@ -22,6 +22,7 @@ import com.shared.dto.MoveMessageDTO;
 import com.shared.dto.OpponentDTO;
 import com.shared.dto.OpponentReconnectedDTO;
 import com.shared.dto.PauseDTO;
+import com.shared.dto.RedirectDTO;
 import com.shared.dto.ResumeOkDTO;
 import com.shared.dto.GameOverDTO;
 import com.shared.util.Colour;
@@ -82,7 +83,6 @@ public class ChessWebSocketClient extends WebSocketClient {
     // ---------- websocket callbacks ----------
     @Override
     public void onOpen(ServerHandshake handshakeData) {
-        // send join
         try {
             send(objectMapper.writeValueAsString(new Envelope<>("join",
                 new JoinMessageDTO(playerId, playerName, playerRating))));
@@ -109,7 +109,6 @@ public class ChessWebSocketClient extends WebSocketClient {
         String trimmed = message.trim();
         if (trimmed.isEmpty()) return;
 
-        // ignore non-JSON frames (e.g., "Welcome to the server")
         if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
             if (PRINT_DEBUG_JSON) System.out.println("<< NON-JSON: " + trimmed);
             return;
@@ -149,8 +148,8 @@ public class ChessWebSocketClient extends WebSocketClient {
                 case "resumeOk" -> {
                     ResumeOkDTO ok = objectMapper.treeToValue(payload, ResumeOkDTO.class);
                     this.gameId     = ok.gameId();
-                    this.yourColour = ok.yourColour();   // ← set me
-                    this.opponent   = ok.opponent();     // ← and me
+                    this.yourColour = ok.yourColour();   
+                    this.opponent   = ok.opponent();     
                     this.fen        = ok.fen();
                     this.toPlay     = ok.toPlay();
                     this.paused     = false;
@@ -177,13 +176,31 @@ public class ChessWebSocketClient extends WebSocketClient {
                 case "gameOver" -> {
                     GameOverDTO over = objectMapper.treeToValue(payload, GameOverDTO.class);
                     this.gameIsOver = true;
-                    this.paused = false; // ensure we don't say "paused"
+                    this.paused = false;
                     this.gameOverSummary = String.format(
                         "result=%s reason=%s winner=%s",
                         over.result(), over.reason(),
                         over.winnerId() == null ? "-" : over.winnerId()
                     );
-                    render(); // single-frame UI handles how to show it
+                    render(); 
+                }
+                case "redirect" -> {
+                    RedirectDTO rd = objectMapper.treeToValue(payload, RedirectDTO.class);
+                    String nodeId = rd.nodeId();
+                    try { close(); } catch (Exception ignore) {}
+
+                    URI base = getURI(); 
+                    String path = base.getPath() == null ? "/" : base.getPath();
+                    String qs = "pid=" + playerId + "&route=" + nodeId;
+
+                    URI next = new URI(
+                        base.getScheme(), null,
+                        base.getHost(), base.getPort(),
+                        path, qs, null
+                    );
+
+                    WebSocketClient ws = new ChessWebSocketClient(next, playerId, playerName, playerRating);
+                    ws.connect();
                 }
                 default -> {
                     // ignore unknown
@@ -327,7 +344,6 @@ public class ChessWebSocketClient extends WebSocketClient {
 
     // ---------- glyphs ----------
     private static boolean detectUnicodePieces() {
-        // Conservative: Windows consoles often lack these unless configured
         String os = System.getProperty("os.name", "").toLowerCase();
         return !(os.contains("win"));
     }

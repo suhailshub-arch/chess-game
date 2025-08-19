@@ -17,8 +17,13 @@ services:
       - "6380:6379"
     networks:
       - chess-net
+    command: redis-server --appendonly yes --appendfsync always
+    volumes: 
+      - ./redis-data:/data
     restart: unless-stopped
 
 networks:
   chess-net:
     driver: bridge
+
+  

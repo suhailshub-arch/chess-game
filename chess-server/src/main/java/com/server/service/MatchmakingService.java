@@ -7,6 +7,8 @@ import com.server.model.Player;
 import com.server.model.ChessGame.STATUS;
 import com.server.redis.RedisManager;
 import com.server.util.Match;
+import com.shared.dto.Envelope;
+import com.shared.dto.ErrorDTO;
 import com.shared.util.GameResult;
 
 public class MatchmakingService {
@@ -108,12 +110,26 @@ public class MatchmakingService {
     public ChessGame createChessGame(Player player1, Player player2){
         Player[] players = {player1, player2};
         ChessGame game = new ChessGame(players, gameIdCounter);
-        activeGames.put(gameIdCounter, game);
+        
 
         RedisManager rm = RedisManager.getInstance();
-        rm.setGameNode(game.getGameId(), nodeId);
+        boolean stateSet = rm.initGameState(game.getGameId(), this.nodeId, game.getPosition().getFEN(), player1.getId(), player2.getId());
+        if (!stateSet) {
+            Envelope<ErrorDTO> errorEnvelope = new Envelope<>("error", new ErrorDTO("stateExist", "Game was already initialised"));
+        }
+
+        activeGames.put(gameIdCounter, game);
         boolean ok1 = rm.bindPlayerToGame(player1.getId(), game.getGameId());
         boolean ok2 = rm.bindPlayerToGame(player2.getId(), game.getGameId());
+
+        if (!ok1 || !ok2) {
+            System.out.printf("[Redis] bind failed p1=%s ok1=%s p2=%s ok2=%s%n",
+                    player1.getId(), ok1, player2.getId(), ok2);
+            // simplest rollback for now:
+            activeGames.remove(game.getGameId());
+            return game; // or throw / return null depending on your flow
+        }
+
         System.out.println("[Redis] Writing game " + game.getGameId() + " -> " + nodeId);
         gameIdCounter++;
         System.out.println("Game Created " + game.toString());

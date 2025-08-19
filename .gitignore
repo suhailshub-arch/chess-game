@@ -2,3 +2,4 @@
 .env
 **/lib
 **/target
+**/redis-data

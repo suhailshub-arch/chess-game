@@ -146,85 +146,116 @@ public class ChessWebSocketServer extends WebSocketServer{
             
             if ("join".equals(messageType)) {
                 JoinMessageDTO joinMsg = objectMapper.treeToValue(root.get("payload"), JoinMessageDTO.class);
+                String pid = joinMsg.playerId();
 
-                for (var entry : new java.util.ArrayList<>(pausedGames.entrySet())) {
-                    final long gameId = entry.getKey();
-                    final PauseInfo info = entry.getValue();
+                // ---------- ROUTE FIRST via Redis ----------
+                RedisManager rm = RedisManager.getInstance();
+                Long gid = rm.getPlayerGame(pid);
+                if (gid != null) {
+                    String hostNode = rm.getGameNode(gid);          
+                    String myNode   = Integer.toString(getPort());  
 
-                    if (info.disconnectedPlayerId().equals(joinMsg.playerId())) {
-                        ChessGame game = matchmakingService.getActiveChessgame(gameId);
-                        String playerId = info.disconnectedPlayerId();
-                        boolean isWhite = playerId.equals(game.getPlayers()[0].getId());
-                        Player returningPlayer = isWhite ? game.getPlayers()[0] : game.getPlayers()[1];
-                        
+                    if (!myNode.equals(hostNode)) {
+                        String json = objectMapper.writeValueAsString(
+                            new Envelope<>("redirect", new RedirectDTO(hostNode)));
+                        safeSend(conn, json, socketLabel(conn));
+                        return;
+                    }
 
-                        Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gameId);
-                        WebSocket oldSeat = (pair == null) ? null : (isWhite ? pair.first : pair.second);
-                        if (oldSeat != null && oldSeat != conn && oldSeat.isOpen()) {
-                            try { oldSeat.close(4001, "replaced by resume"); } catch (Exception ignore) {}
-                        }
+                    // My node -> resume locally (no queue)
+                    ChessGame game = matchmakingService.getActiveChessgame(gid);
+                    if (game == null) {
+                        // Mapping stale (rare). Safest: ask client to reconnect again; edge will route to hostNode.
+                        String json = objectMapper.writeValueAsString(
+                            new Envelope<>("redirect", new RedirectDTO(hostNode)));
+                        safeSend(conn, json, socketLabel(conn));
+                        return;
+                    }
 
-                        socketToPlayer.put(conn, returningPlayer);
-                        playerIdToSocket.put(playerId, conn);
-                        socketToGame.put(conn, game);
+                    boolean isWhite = pid.equals(game.getPlayers()[0].getId());
+                    Player returningPlayer = isWhite ? game.getPlayers()[0] : game.getPlayers()[1];
 
-                        if (pair == null) {
-                            gameIdToSockets.put(gameId, isWhite ? new Pair<>(conn, null) : new Pair<>(null, conn));
-                        } else {
-                            gameIdToSockets.put(gameId, isWhite ? new Pair<>(conn, pair.second) : new Pair<>(pair.first, conn));
-                        }
+                    // Replace old seat if needed
+                    Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gid);
+                    WebSocket oldSeat = (pair == null) ? null : (isWhite ? pair.first : pair.second);
+                    if (oldSeat != null && oldSeat != conn && oldSeat.isOpen()) {
+                        try { oldSeat.close(4001, "replaced by resume"); } catch (Exception ignore) {}
+                    }
 
-                        Pair<WebSocket, WebSocket> after = gameIdToSockets.get(gameId);
-                        boolean bothPresent = after != null
-                                && after.first  != null && after.first.isOpen()
-                                && after.second != null && after.second.isOpen();
+                    // Seat player + maps
+                    socketToPlayer.put(conn, returningPlayer);
+                    playerIdToSocket.put(pid, conn);
+                    socketToGame.put(conn, game);
 
-                        if (bothPresent) {
-                            pausedGames.remove(gameId);
-                        }
+                    if (pair == null) {
+                        gameIdToSockets.put(gid, isWhite ? new Pair<>(conn, null) : new Pair<>(null, conn));
+                    } else {
+                        gameIdToSockets.put(gid, isWhite ? new Pair<>(conn, pair.second) : new Pair<>(pair.first, conn));
+                    }
 
-                        String fen = game.getPosition().getFEN();
-                        Colour toPlay = game.getCurrentPlayer().equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK;
-                        Player opponentPlayer  = isWhite ? game.getPlayers()[1] : game.getPlayers()[0];
-                        OpponentDTO opp = new OpponentDTO(opponentPlayer.getId(), opponentPlayer.getName(), opponentPlayer.getRating());
-                        Colour myColour = isWhite ? Colour.WHITE : Colour.BLACK;
+                    // If both are here, clear paused state (if any)
+                    Pair<WebSocket, WebSocket> after = gameIdToSockets.get(gid);
+                    boolean bothPresent = after != null
+                            && after.first  != null && after.first.isOpen()
+                            && after.second != null && after.second.isOpen();
+                    if (bothPresent) pausedGames.remove(gid);
 
-                        ResumeOkDTO ok = new ResumeOkDTO(gameId, fen, toPlay, myColour, opp);
-                        String jsonOk = objectMapper.writeValueAsString(new Envelope<>("resumeOk", ok));
-                        safeSend(conn, jsonOk, socketLabel(conn));
+                    // Send resumeOk
+                    String fen = game.getPosition().getFEN();
+                    Colour toPlay = game.getCurrentPlayer().equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK;
+                    Player oppPlayer = isWhite ? game.getPlayers()[1] : game.getPlayers()[0];
+                    OpponentDTO opp = new OpponentDTO(oppPlayer.getId(), oppPlayer.getName(), oppPlayer.getRating());
+                    Colour myColour = isWhite ? Colour.WHITE : Colour.BLACK;
 
-                        WebSocket oppSock = isWhite ? after.second : after.first;
-                        OpponentReconnectedDTO or = new OpponentReconnectedDTO(gameId, playerId);
-                        String jsonOr = objectMapper.writeValueAsString(new Envelope<>("opponentReconnected", or));
+                    String jsonOk = objectMapper.writeValueAsString(
+                        new Envelope<>("resumeOk", new ResumeOkDTO(gid, fen, toPlay, myColour, opp)));
+                    safeSend(conn, jsonOk, socketLabel(conn));
+
+                    WebSocket oppSock = (after == null) ? null : (isWhite ? after.second : after.first);
+                    if (oppSock != null && oppSock.isOpen()) {
+                        String jsonOr = objectMapper.writeValueAsString(
+                            new Envelope<>("opponentReconnected", new OpponentReconnectedDTO(gid, pid)));
                         safeSend(oppSock, jsonOr, socketLabel(oppSock));
                     }
+                    return; 
                 }
-                Player player = new Player(joinMsg.playerId(), joinMsg.name(), joinMsg.rating());
+
+                // ---------- NO EXISTING GAME -> normal matchmaking ----------
+                Player player = new Player(pid, joinMsg.name(), joinMsg.rating());
                 socketToPlayer.put(conn, player);
-                playerIdToSocket.put(joinMsg.playerId(), conn);
+                playerIdToSocket.put(pid, conn);
                 matchmakingService.addPlayer(player);
 
                 List<Match> matches = matchmakingService.tryMatchWithWaiting();
                 if (!matches.isEmpty()) {
                     Iterator<Match> itMatches = matches.iterator();
-                    while(itMatches.hasNext()){
+                    while (itMatches.hasNext()) {
                         Match match = itMatches.next();
                         ChessGame game = match.game;
                         Player playerWhite = match.white;
                         Player playerBlack = match.black;
-                        WebSocket playerWhiteConn = playerIdToSocket.get(playerWhite.getId());
-                        WebSocket playerBlackConn = playerIdToSocket.get(playerBlack.getId());
-                        socketToGame.put(playerWhiteConn, game);
-                        socketToGame.put(playerBlackConn, game);
-                        gameIdToSockets.put(game.getGameId(), new Pair<>(playerWhiteConn, playerBlackConn));
 
-                        String initialFen = Position.createInitialPosition().getFEN();
+                        WebSocket wSock = playerIdToSocket.get(playerWhite.getId());
+                        WebSocket bSock = playerIdToSocket.get(playerBlack.getId());
+                        socketToGame.put(wSock, game);
+                        socketToGame.put(bSock, game);
+                        gameIdToSockets.put(game.getGameId(), new Pair<>(wSock, bSock));
 
-                        MatchedMessageDTO whiteMatchedMessage = new MatchedMessageDTO(game.getGameId(), playerWhite.getId(), Colour.WHITE, new OpponentDTO(playerBlack.getId(), playerBlack.getName(), playerBlack.getRating()), initialFen);
-                        MatchedMessageDTO blackMatchedMessage = new MatchedMessageDTO(game.getGameId(), playerBlack.getId(), Colour.BLACK, new OpponentDTO(playerWhite.getId(), playerWhite.getName(), playerWhite.getRating()), initialFen);
-                        playerWhiteConn.send(objectMapper.writeValueAsString(new Envelope<MatchedMessageDTO>("matchFound", whiteMatchedMessage)));
-                        playerBlackConn.send(objectMapper.writeValueAsString(new Envelope<MatchedMessageDTO>("matchFound", blackMatchedMessage)));
+                        String initialFen = chesspresso.position.Position.createInitialPosition().getFEN();
 
+                        MatchedMessageDTO whiteMsg = new MatchedMessageDTO(
+                            game.getGameId(), playerWhite.getId(), Colour.WHITE,
+                            new OpponentDTO(playerBlack.getId(), playerBlack.getName(), playerBlack.getRating()),
+                            initialFen
+                        );
+                        MatchedMessageDTO blackMsg = new MatchedMessageDTO(
+                            game.getGameId(), playerBlack.getId(), Colour.BLACK,
+                            new OpponentDTO(playerWhite.getId(), playerWhite.getName(), playerWhite.getRating()),
+                            initialFen
+                        );
+
+                        wSock.send(objectMapper.writeValueAsString(new Envelope<>("matchFound", whiteMsg)));
+                        bSock.send(objectMapper.writeValueAsString(new Envelope<>("matchFound", blackMsg)));
                     }
                 }
             }
@@ -272,6 +303,7 @@ public class ChessWebSocketServer extends WebSocketServer{
                     return;
                 }
 
+                String oldFen = game.getPosition().getFEN();
                 boolean makeMove = game.makeMove(move);
 
                 if (!makeMove) {
@@ -283,13 +315,27 @@ public class ChessWebSocketServer extends WebSocketServer{
                 Player currentPlayer = game.getCurrentPlayer();
                 // TODO: ADD COLOUR TO PLAYER MODEL!!!!!!!!!!!!!!!
                 Colour toPlay = currentPlayer.equals(game.getPlayers()[0]) ? Colour.WHITE : Colour.BLACK; 
-                MoveBroadcastDTO broadcastMsg = new MoveBroadcastDTO(game.getGameId(), moveMsg.uci(), newFen, toPlay);
-                Envelope<MoveBroadcastDTO> moveEnvelope = new Envelope<>("move", broadcastMsg);
-                String json = objectMapper.writeValueAsString(moveEnvelope);
+                String toPlayString = toPlay == Colour.WHITE ? "w" : "b";
+                String whiteId = game.getPlayers()[0].getId();
+                String blackId = game.getPlayers()[1].getId();
+                String nodeId = Integer.toString(getPort());
 
-                Pair<WebSocket, WebSocket> sockets = gameIdToSockets.get(game.getGameId());
-                sockets.first.send(json);
-                sockets.second.send(json);
+                boolean moveCommitted = RedisManager.getInstance().commitMove(game.getGameId(), nodeId, newFen, moveMsg.uci(), whiteId, blackId, toPlayString, "IN_PROGRESS");
+
+                if (moveCommitted) {
+                    MoveBroadcastDTO broadcastMsg = new MoveBroadcastDTO(game.getGameId(), moveMsg.uci(), newFen, toPlay);
+                    Envelope<MoveBroadcastDTO> moveEnvelope = new Envelope<>("move", broadcastMsg);
+                    String json = objectMapper.writeValueAsString(moveEnvelope);
+
+                    Pair<WebSocket, WebSocket> sockets = gameIdToSockets.get(game.getGameId());
+                    sockets.first.send(json);
+                    sockets.second.send(json);
+                } else {
+                    game.getPosition().undoMove();
+                    sendError(conn, "persistFailed", "We couldn't save your move. The board is unchanged; please try again.");
+                    return;
+                }
+                
 
                 if (game.getPosition().isMate()) {
                     String winnerId = playerToMove.getId();
@@ -420,31 +466,27 @@ public class ChessWebSocketServer extends WebSocketServer{
         pausedGames.remove(gameId);
         ChessGame game = matchmakingService.getActiveChessgame(gameId);
         if (game == null) return;
-        System.out.println("IM HEREEEEEE");
-        // We’ll snapshot everything we need while holding the lock,
-        // then send over the network after releasing the lock.
+
         WebSocket whiteSock = null;
         WebSocket blackSock = null;
         String json = null;
 
         synchronized (game) {
-            // 2) At-most-once guard
             if (!game.markEnded()) return;
 
-            // 3) Mark/record end on the server side (idempotent on service side)
             matchmakingService.endGame(gameId, result);
+            RedisManager.getInstance().endGameCleanup(gameId, Integer.toString(getPort()));
 
-            // 4) Snapshot sockets and clean maps while locked
             Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gameId);
             if (pair != null) {
                 whiteSock = pair.first;
                 blackSock = pair.second;
 
-                dumpState("before", gameId);
+                // dumpState("before", gameId);
                 if (whiteSock != null) socketToGame.remove(whiteSock);
                 if (blackSock != null) socketToGame.remove(blackSock);
                 gameIdToSockets.remove(gameId);
-                dumpState("after", gameId);
+                // dumpState("after", gameId);
             }
 
             GameOverDTO payload = new GameOverDTO(gameId, result, reason, winnerId);
@@ -453,10 +495,9 @@ public class ChessWebSocketServer extends WebSocketServer{
                 json = objectMapper.writeValueAsString(env);
             } catch (Exception e) {
                 System.err.println("Failed to serialize gameOver: " + e.getMessage());
-                // We still proceed to clean state; nothing left to send.
                 json = null;
             }
-        } // <-- release lock before network I/O
+        } 
 
         if (json != null) {
             try { if (whiteSock != null) safeSend(whiteSock, json, socketLabel(whiteSock)); } catch (Exception e) {
