@@ -123,12 +123,15 @@ public class RedisManager {
     public boolean initGameState(long gid, String nodeId, String initialFen, String whiteId, String blackId) {
         try (Jedis j = pool.getResource()) {
             Map<String,String> initStateMap = new HashMap<>();
+
+            if(j.exists(kGameState(gid))) {
+                return true;
+            }
+
             Transaction t = j.multi();
             String now = Long.toString(System.currentTimeMillis());
 
-            if(j.get(kGameState(gid)) == null) {
-                return false;
-            }
+            
 
             t.del(kGameMoves(gid));
 
@@ -149,7 +152,40 @@ public class RedisManager {
             List<Object> res = t.exec();
             return res != null;
         } catch (Exception e) {
+            System.out.println("[INIT_FAIL] gid=" + gid + " node=" + nodeId + " class=" + e.getClass().getName()
+                + " msg=" + e.getMessage());
+            e.printStackTrace();
             return false;
+        }
+    }
+
+    public void cleanUpGameCreation(long gid, String nodeId, String whiteId, String blackId) {
+        try (Jedis j = pool.getResource()) {
+            j.del(kGameState(gid));
+            j.del(kGameMoves(gid));
+            j.del(kGameNode(gid));
+            j.srem(kNodeGames(nodeId), Long.toString(gid));
+            j.del(kPlayerGame(blackId));
+            j.del(kPlayerGame(whiteId));
+        }
+    }
+
+    public boolean endGamePersist(long gid, String nodeId, String resultString, String reasonString, String winnerIdOrNull) {
+        try (Jedis j = pool.getResource()) {
+            Map<String,String> endGameState = new HashMap<>();
+            endGameState.put("status", "ENDED");
+            endGameState.put("result", resultString);
+            endGameState.put("reason", reasonString);
+            endGameState.put("winnerId", winnerIdOrNull == null ? "" : winnerIdOrNull);
+            endGameState.put("lastUpdated", Long.toString(System.currentTimeMillis()));
+            Transaction t = j.multi();
+            t.hmset(kGameState(gid), endGameState);
+            t.del(kGameNode(gid));
+            t.srem(kNodeGames(nodeId), Long.toString(gid));
+
+            List<Object> res = t.exec();
+            return res != null;
+
         }
     }
 }

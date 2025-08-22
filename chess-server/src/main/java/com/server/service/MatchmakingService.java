@@ -18,6 +18,8 @@ public class MatchmakingService {
     private final static long WAIT_THRESHOLD_MS = 5_000;
     private long gameIdCounter = 1;
     private final String nodeId;
+    private final java.util.concurrent.locks.ReentrantLock matchLock = new java.util.concurrent.locks.ReentrantLock();
+
 
     public MatchmakingService(String nodeId) {
         buckets.put("low", new LinkedList<>()); // 0-999
@@ -41,99 +43,148 @@ public class MatchmakingService {
     }
 
     public List<Match> tryMatchWithWaiting(){
-        long currentTime = System.currentTimeMillis();
-        Set<String> matchedPlayers = new HashSet<>();
-        List<Match> matches = new ArrayList<Match>();
+        if (!matchLock.tryLock()) {
+            System.out.println("[MATCH] busy; skip by " + Thread.currentThread().getName());
+            return java.util.Collections.emptyList();
+        }
 
-        for(int i = 0; i < bucketOrder.size(); i++){
-            String bucketKey = bucketOrder.get(i);
-            Queue<Player> queue = buckets.get(bucketKey);
+        try {
+            System.out.print(System.currentTimeMillis() + Thread.currentThread().getName());
+            long currentTime;
+            Set<String> matchedPlayers = new HashSet<>();
+            List<Match> matches = new ArrayList<Match>();
 
-            Iterator<Player> playerIterator = queue.iterator();
-            while (playerIterator.hasNext()) {
-                Player player = playerIterator.next();
-                if(matchedPlayers.contains(player.getId())){
-                    continue;
-                }
+            for(int i = 0; i < bucketOrder.size(); i++){
+                String bucketKey = bucketOrder.get(i);
+                Queue<Player> queue = buckets.get(bucketKey);
 
-                long waited = currentTime - player.getJoinTime();
-                if (queue.size() >= 2) {
-                    Player player1 = queue.poll();
-                    Player player2 = queue.poll();
-                    matchedPlayers.add(player1.getId());
-                    matchedPlayers.add(player2.getId());
-                    System.out.println("Matched " + player1 + " vs " + player2);
-                    ChessGame game = createChessGame(player1, player2);
-                    matches.add(new Match(player1, player2, game));
-                    continue;
-                }
+                int attempts = queue.size();
+                // Iterator<Player> playerIterator = queue.iterator();
+                while (attempts > 0 && !queue.isEmpty()) {
+                    Player head = queue.peek();
+                    if (head == null) break;
+                    attempts--;
 
-                if(waited > WAIT_THRESHOLD_MS){
-                    // Check previous queue
-                    if(i > 0){
-                        Queue<Player> prevQueue = buckets.get(bucketOrder.get(i - 1));
-                        Player match = prevQueue.poll();
-
-                        if(match != null){
-                            playerIterator.remove();
-                            matchedPlayers.add(match.getId());
-                            matchedPlayers.add(player.getId());
-                            System.out.println("[Extended] Matched " + match + " vs " + player);
-                            ChessGame game = createChessGame(player, match);
-                            matches.add(new Match(player, match, game));
-                            continue;
+                    if(matchedPlayers.contains(head.getId())){
+                        queue.add(queue.poll());
+                        continue;
+                    }
+                    currentTime = System.currentTimeMillis();
+                    long waited = currentTime - head.getJoinTime();
+                    if (queue.size() < 2 && waited <= WAIT_THRESHOLD_MS) break;
+                    if (queue.size() >= 2) {
+                        Player player1 = queue.poll();
+                        Player player2 = queue.poll();
+                        CreateGameResult gameResult = createChessGame(player1, player2);
+                        if (gameResult.ok()) {
+                            matches.add(new Match(player1, player2, gameResult.game()));
+                            matchedPlayers.add(player1.getId());
+                            matchedPlayers.add(player2.getId());
+                            System.out.println("Matched " + player1 + " vs " + player2);
+                        } else {
+                            System.out.println("[CREATE_FAIL] base " + player1.getId() + " vs " + player2.getId()
+        + " reason=" + gameResult.error() + " msg=" + gameResult.reason());
+                            queue.add(player1);
+                            queue.add(player2);
                         }
-
+                        
+                        continue;
                     }
 
-                    // Check next queue
-                    if(i < bucketOrder.size() - 1){
-                        Queue<Player> nextQueue = buckets.get(bucketOrder.get(i + 1));
-                        Player match = nextQueue.poll();
+                    if(waited > WAIT_THRESHOLD_MS){
+                        // Check previous queue
+                        if(i > 0){
+                            Queue<Player> prevQueue = buckets.get(bucketOrder.get(i - 1));
+                            Player match = prevQueue.peek();
 
-                        if(match != null){
-                            playerIterator.remove();
-                            matchedPlayers.add(match.getId());
-                            matchedPlayers.add(player.getId());
-                            System.out.println("[Extended] Matched " + match + " vs " + player);
-                            ChessGame game = createChessGame(player, match);
-                            matches.add(new Match(player, match, game));
-                            continue;
+                            if(match != null){
+                                match = prevQueue.poll();
+                                Player player = queue.poll();
+                                CreateGameResult gameResult = createChessGame(player, match);
+                                if (gameResult.ok()) {
+                                    matches.add(new Match(player, match, gameResult.game()));
+                                    matchedPlayers.add(match.getId());
+                                    matchedPlayers.add(player.getId());
+                                    System.out.println("[Extended] Matched " + match + " vs " + player);
+                                } else {
+                                    System.out.println("[CREATE_FAIL] prev " + player.getId() + " vs " + match.getId()
+        + " reason=" + gameResult.error() + " msg=" + gameResult.reason());
+                                    prevQueue.add(match);
+                                    queue.add(player);
+                                }
+                                
+                                continue;
+                            }
+
                         }
+
+                        // Check next queue
+                        if(i < bucketOrder.size() - 1){
+                            Queue<Player> nextQueue = buckets.get(bucketOrder.get(i + 1));
+                            Player match = nextQueue.peek();
+
+                            if(match != null){
+                                match = nextQueue.poll();
+                                Player player = queue.poll();
+                                CreateGameResult gameResult = createChessGame(player, match);
+                                if (gameResult.ok()) {
+                                    matches.add(new Match(player, match, gameResult.game()));
+                                    matchedPlayers.add(match.getId());
+                                    matchedPlayers.add(player.getId());
+                                    System.out.println("[Extended] Matched " + match + " vs " + player);
+                                } else {
+                                    System.out.println("[CREATE_FAIL] next " + player.getId() + " vs " + match.getId()
+        + " reason=" + gameResult.error() + " msg=" + gameResult.reason());
+                                    nextQueue.add(match);
+                                    queue.add(player);
+                                }
+                                
+                                continue;
+                            }
+                        }
+                        queue.add(queue.poll());
+                        continue;
                     }
                 }
             }
+            return matches;
+        } finally {
+            matchLock.unlock();
         }
-        return matches;
+        
     }
 
-    public ChessGame createChessGame(Player player1, Player player2){
+    public CreateGameResult createChessGame(Player player1, Player player2){
+        System.out.println("[CREATE] gid=" + gameIdCounter + " nodeId=" + nodeId
+            + " p1=" + player1.getId() + " p2=" + player2.getId());
+        java.util.Objects.requireNonNull(nodeId, "[CREATE] nodeId is null");
+
+
         Player[] players = {player1, player2};
-        ChessGame game = new ChessGame(players, gameIdCounter);
+        Long gid = gameIdCounter;
+        ChessGame game = new ChessGame(players, gid);
         
 
         RedisManager rm = RedisManager.getInstance();
         boolean stateSet = rm.initGameState(game.getGameId(), this.nodeId, game.getPosition().getFEN(), player1.getId(), player2.getId());
         if (!stateSet) {
-            Envelope<ErrorDTO> errorEnvelope = new Envelope<>("error", new ErrorDTO("stateExist", "Game was already initialised"));
+            return new CreateGameResult(false, null, CreateGameError.INIT_FAILED, "init failed");
         }
 
-        activeGames.put(gameIdCounter, game);
         boolean ok1 = rm.bindPlayerToGame(player1.getId(), game.getGameId());
         boolean ok2 = rm.bindPlayerToGame(player2.getId(), game.getGameId());
 
         if (!ok1 || !ok2) {
             System.out.printf("[Redis] bind failed p1=%s ok1=%s p2=%s ok2=%s%n",
                     player1.getId(), ok1, player2.getId(), ok2);
-            // simplest rollback for now:
-            activeGames.remove(game.getGameId());
-            return game; // or throw / return null depending on your flow
+            return new CreateGameResult(false, null, CreateGameError.BIND_FAILED, "bind failed");
         }
 
         System.out.println("[Redis] Writing game " + game.getGameId() + " -> " + nodeId);
+        activeGames.put(gid, game);
         gameIdCounter++;
         System.out.println("Game Created " + game.toString());
-        return game;
+        return new CreateGameResult(true, game, null, null);
     }
 
     public void endGame(long gameId, GameResult gameResult) {

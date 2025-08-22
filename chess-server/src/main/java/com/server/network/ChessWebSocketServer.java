@@ -225,8 +225,11 @@ public class ChessWebSocketServer extends WebSocketServer{
                 socketToPlayer.put(conn, player);
                 playerIdToSocket.put(pid, conn);
                 matchmakingService.addPlayer(player);
+                // System.out.print(System.currentTimeMillis() + Thread.currentThread().getName());
 
                 List<Match> matches = matchmakingService.tryMatchWithWaiting();
+                // System.out.print(System.currentTimeMillis() + Thread.currentThread().getName());
+
                 if (!matches.isEmpty()) {
                     Iterator<Match> itMatches = matches.iterator();
                     while (itMatches.hasNext()) {
@@ -438,7 +441,7 @@ public class ChessWebSocketServer extends WebSocketServer{
                 safeSend(oppSock, jsonOr, socketLabel(oppSock));
             }
         } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
+            System.err.println("Error class: " + e.getClass().getName());
         }
 
     }
@@ -475,6 +478,14 @@ public class ChessWebSocketServer extends WebSocketServer{
             if (!game.markEnded()) return;
 
             matchmakingService.endGame(gameId, result);
+
+            String gameResultString = result.toString();
+            String gameOverReasonString = reason.toString();
+
+            boolean persisted = RedisManager.getInstance().endGamePersist(gameId, Integer.toString(getPort()), gameResultString, gameOverReasonString, winnerId);
+            if (!persisted) {
+                System.out.println("[END_PERSIST_FAIL] gid=" + gameId);
+            }
             RedisManager.getInstance().endGameCleanup(gameId, Integer.toString(getPort()));
 
             Pair<WebSocket, WebSocket> pair = gameIdToSockets.get(gameId);
