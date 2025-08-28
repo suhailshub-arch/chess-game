@@ -32,6 +32,7 @@ public class RedisManager {
     private String kNodeGames(String nodeId) { return "node:" + nodeId + ":games"; }
     private String kGameState(long gid) { return "game:" + gid + ":state"; }
     private String kGameMoves(long gid) { return "game:" + gid + ":moves"; }
+    private String kNodeHeartBeat(String nodeId) { return "node:" + nodeId + ":hb"; }
 
     /* Commit a Move */
     public boolean commitMove (
@@ -186,6 +187,12 @@ public class RedisManager {
             List<Object> res = t.exec();
             return res != null;
 
+        }
+    }
+
+    public void touchNodeHeartBeat(String nodeId, long nowMs) {
+        try (Jedis j = pool.getResource()) {
+            j.setex(kNodeHeartBeat(nodeId), 3, Long.toString(nowMs));
         }
     }
 }

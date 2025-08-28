@@ -463,6 +463,19 @@ public class ChessWebSocketServer extends WebSocketServer{
             java.util.concurrent.TimeUnit.MILLISECONDS
         );
 
+        hbExec.scheduleAtFixedRate(
+            () -> {
+                try {
+                    String nodeId = Integer.toString(getPort());
+                    RedisManager.getInstance().touchNodeHeartBeat(nodeId, System.currentTimeMillis());
+                } catch (Exception e) {
+                    System.out.println("[HB-NODE] fail: " + e.getMessage());
+                }
+            },
+            0L,
+            1_000L,
+            java.util.concurrent.TimeUnit.MILLISECONDS
+        );
     }
 
     private void finishGameSafely(long gameId, GameResult result, GameOverReason reason, String winnerId) {
